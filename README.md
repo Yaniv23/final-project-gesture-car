@@ -9,7 +9,7 @@ This README explains project purpose, dependencies, how to run the hand tracker 
 
 - The Python code captures hand gestures using MediaPipe and OpenCV, maps gestures to simple commands, and sends those commands over serial to an ESP32 and to microcontroller sketches that drive motors or forward the commands via ESP-NOW.
 
-- There is also a Video broadcasting that is under developement who as to bee send from ESP32-S3 on board to the PC
+- There is also a Video broadcasting that is under developement who as to bee send from ESP32-S3 on board to the PC.yaniv
 
 ## Project file map and explanations
 
