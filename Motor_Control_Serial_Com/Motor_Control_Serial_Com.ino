@@ -48,6 +48,7 @@ void setup() {
 
 void loop() {
   while (Serial.available()) {
+    // @todo Pass ack after case 
     char c = Serial.read();
     if (c == '\n') {
       incoming.trim();
