@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import math
 import serial
+import serial.tools.list_ports
 import time
 
 # === SETUP ===
@@ -11,9 +12,35 @@ mp_draw = mp.solutions.drawing_utils
 
 cap = cv2.VideoCapture(0)
 
-# Serial to ESP32
-ser = serial.Serial('COM11', 115200, timeout=0.1)
-time.sleep(2)
+# Serial to ESP32 - Try to connect, but make it optional
+ser = None
+COM_PORT = 'COM11'  # Default COM port, can be changed here
+
+def find_available_ports():
+    """Find all available COM ports"""
+    ports = serial.tools.list_ports.comports()
+    available = []
+    for port in ports:
+        available.append(port.device)
+    return available
+
+# Try to connect to serial port
+try:
+    ser = serial.Serial(COM_PORT, 115200, timeout=0.1)
+    time.sleep(2)
+    print(f"[OK] Connected to {COM_PORT}")
+except serial.SerialException as e:
+    print(f"[WARNING] Could not connect to {COM_PORT}: {e}")
+    print("Available COM ports:")
+    available_ports = find_available_ports()
+    if available_ports:
+        for port in available_ports:
+            print(f"  - {port}")
+        print(f"\nTo use a different port, change COM_PORT in the script or connect your ESP32.")
+    else:
+        print("  No COM ports found.")
+    print("\n[INFO] Running in camera-only mode (no serial communication)")
+    print("       Hand tracking will still work, but commands won't be sent to ESP32.\n")
 
 # Stability filtering
 last_detected = ""
@@ -147,11 +174,14 @@ while True:
         if stable_counter >= stable_threshold:
             if current_display != detected_label:
                 current_display = detected_label
-                try:
-                    ser.write((current_display + '\n').encode('utf-8'))
-                    print("Sent to ESP32:", current_display)
-                except Exception as e:
-                    print("Serial write error:", e)
+                if ser and ser.is_open:
+                    try:
+                        ser.write((current_display + '\n').encode('utf-8'))
+                        print("Sent to ESP32:", current_display)
+                    except Exception as e:
+                        print("Serial write error:", e)
+                else:
+                    print("Detected (no serial):", current_display)
 
         # Draw hand
         mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -159,13 +189,14 @@ while True:
         cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
 
     # Read serial
-    try:
-        if ser.in_waiting:
-            line = ser.readline().decode('utf-8').strip()
-            if line:
-                print("ESP32:", line)
-    except Exception as e:
-        print("Serial read error:", e)
+    if ser and ser.is_open:
+        try:
+            if ser.in_waiting:
+                line = ser.readline().decode('utf-8').strip()
+                if line:
+                    print("ESP32:", line)
+        except Exception as e:
+            print("Serial read error:", e)
 
     # Display label
     color = {
@@ -185,5 +216,7 @@ while True:
 
 # Cleanup
 cap.release()
-ser.close()
+if ser and ser.is_open:
+    ser.close()
+    print("Serial port closed")
 cv2.destroyAllWindows()
