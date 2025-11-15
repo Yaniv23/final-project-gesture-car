@@ -1,0 +1,11 @@
+# Gesture Car Project - Python Dependencies
+# Python 3.7+ required, Python 3.10 recommended for MediaPipe compatibility
+
+# Computer Vision
+opencv-python>=4.5.0,<5.0.0
+
+# Hand Tracking
+mediapipe>=0.10.0,<0.11.0
+
+# Serial Communication
+pyserial>=3.5,<4.0
