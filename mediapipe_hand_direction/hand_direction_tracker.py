@@ -164,29 +164,32 @@ while True:
         else:
             detected_label = get_direction_label(angle_deg)
 
-        # Stability filter
-        if detected_label == last_detected:
-            stable_counter += 1
-        else:
-            stable_counter = 0
-            last_detected = detected_label
-
-        if stable_counter >= stable_threshold:
-            if current_display != detected_label:
-                current_display = detected_label
-                if ser and ser.is_open:
-                    try:
-                        ser.write((current_display + '\n').encode('utf-8'))
-                        print("Sent to ESP32:", current_display)
-                    except Exception as e:
-                        print("Serial write error:", e)
-                else:
-                    print("Detected (no serial):", current_display)
-
         # Draw hand
         mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
         cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
         cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
+    else:
+        # No hand detected - send Stop command
+        detected_label = "Stop"
+
+    # Stability filter (applies to both hand detected and no hand detected)
+    if detected_label == last_detected:
+        stable_counter += 1
+    else:
+        stable_counter = 0
+        last_detected = detected_label
+
+    if stable_counter >= stable_threshold:
+        if current_display != detected_label:
+            current_display = detected_label
+            if ser and ser.is_open:
+                try:
+                    ser.write((current_display + '\n').encode('utf-8'))
+                    print("Sent to ESP32:", current_display)
+                except Exception as e:
+                    print("Serial write error:", e)
+            else:
+                print("Detected (no serial):", current_display)
 
     # Read serial
     if ser and ser.is_open:
@@ -211,7 +214,13 @@ while True:
     cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
     cv2.imshow("Hand + Serial", frame)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    # Check if window was closed with X button or 'q' key pressed
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
+        break
+    
+    # Check if window was closed by clicking X button
+    if cv2.getWindowProperty("Hand + Serial", cv2.WND_PROP_VISIBLE) < 1:
         break
 
 # Cleanup
