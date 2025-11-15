@@ -1,5 +1,5 @@
 // ESP32 + 4 Motors + Mecanum Wheels + 2 L298N Drivers
-// Mecanum drive control via ESP-NOW
+
 
 #include <esp_now.h>
 #include <WiFi.h>
