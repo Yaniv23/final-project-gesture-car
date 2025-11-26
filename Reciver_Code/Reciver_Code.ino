@@ -50,7 +50,12 @@ void setup() {
   delay(1000);
 
   WiFi.mode(WIFI_STA);
+  delay(100);  // Small delay to ensure WiFi is ready
+  
   Serial.println("🔧 ESP32 set to STA mode");
+  Serial.print("📡 This ESP32 (Receiver) MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.println("   (Use this MAC in your sender code)\n");
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("❌ ESP-NOW init failed");

@@ -14,7 +14,7 @@ cap = cv2.VideoCapture(0)
 
 # Serial to ESP32 - Try to connect, but make it optional
 ser = None
-COM_PORT = 'COM11'  # Default COM port, can be changed here
+COM_PORT = 'COM9'  # Default COM port, can be changed here
 
 def find_available_ports():
     """Find all available COM ports"""

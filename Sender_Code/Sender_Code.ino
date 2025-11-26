@@ -1,7 +1,7 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-uint8_t receiverMAC[] = {0xCC, 0xDB, 0xA7, 0x9B, 0x72, 0xAC}; // your receiver MAC
+uint8_t receiverMAC[] = {0x00, 0x4B, 0x12, 0x34, 0xF7, 0xF4}; 
 
 typedef struct struct_message {
   char command[32];
