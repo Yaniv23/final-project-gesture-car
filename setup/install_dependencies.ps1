@@ -131,7 +131,7 @@ if ($pythonVersion -match $versionPattern) {
     }
 }
 
-# Navigate to the mediapipe_hand_direction directory
+# Navigate to the Hand_Tracking directory
 # Script is in setup/ folder, so go up one level to project root
 # Use absolute path to work from any directory
 $scriptFullPath = Find-ScriptPath
@@ -142,7 +142,7 @@ if (-not $scriptFullPath) {
     Write-Host ""
     Write-Host "Please run the script using one of these methods:" -ForegroundColor Yellow
     Write-Host "  1. From project root: .\setup\install_dependencies.ps1" -ForegroundColor White
-    Write-Host "  2. From mediapipe_hand_direction: ..\setup\install_dependencies.ps1" -ForegroundColor White
+    Write-Host "  2. From Hand_Tracking: ..\setup\install_dependencies.ps1" -ForegroundColor White
     Write-Host "  3. Using call operator: & '.\setup\install_dependencies.ps1'" -ForegroundColor White
     Write-Host "  4. Using full path: & 'D:\Final Project\FinalRepo\final-project-gesture-car\setup\install_dependencies.ps1'" -ForegroundColor White
     exit 1
@@ -150,20 +150,20 @@ if (-not $scriptFullPath) {
 
 $scriptPath = Split-Path -Parent $scriptFullPath
 $projectRoot = Split-Path -Parent $scriptPath
-$mediapipeDir = Join-Path $projectRoot "mediapipe_hand_direction"
+$handTrackingDir = Join-Path $projectRoot "Hand_Tracking"
 
-if (-not (Test-Path $mediapipeDir)) {
-    Write-Host "[ERROR] Directory 'mediapipe_hand_direction' not found!" -ForegroundColor Red
+if (-not (Test-Path $handTrackingDir)) {
+    Write-Host "[ERROR] Directory 'Hand_Tracking' not found!" -ForegroundColor Red
     Write-Host "  Make sure you're running this script from the project root." -ForegroundColor Yellow
     exit 1
 }
 
-Set-Location $mediapipeDir
-Write-Host "[OK] Changed to directory: $mediapipeDir" -ForegroundColor Green
+Set-Location $handTrackingDir
+Write-Host "[OK] Changed to directory: $handTrackingDir" -ForegroundColor Green
 Write-Host ""
 
 # Check if virtual environment exists
-$venvPath = Join-Path $mediapipeDir "venv"
+$venvPath = Join-Path $handTrackingDir "venv"
 if (Test-Path $venvPath) {
     Write-Host "Virtual environment already exists." -ForegroundColor Yellow
     Write-Host "Do you want to recreate it? (y/N): " -ForegroundColor Yellow -NoNewline
@@ -214,7 +214,7 @@ Write-Host "[OK] pip upgraded" -ForegroundColor Green
 # Install dependencies
 Write-Host ""
 Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
-$requirementsFile = Join-Path $mediapipeDir "requirements.txt"
+$requirementsFile = Join-Path $handTrackingDir "requirements.txt"
 if (Test-Path $requirementsFile) {
     # Use pip from the virtual environment
     $venvPip = Join-Path $venvPath "Scripts\pip.exe"
@@ -245,11 +245,11 @@ Write-Host "Python dependencies have been installed successfully." -ForegroundCo
 Write-Host ""
 Write-Host "To use the project:" -ForegroundColor Yellow
 Write-Host "  1. Activate the virtual environment:" -ForegroundColor White
-Write-Host "     cd mediapipe_hand_direction" -ForegroundColor Gray
+Write-Host "     cd Hand_Tracking" -ForegroundColor Gray
 Write-Host "     .\venv\Scripts\Activate.ps1" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  2. Run the hand tracker:" -ForegroundColor White
-Write-Host "     python hand_direction_tracker.py" -ForegroundColor Gray
+Write-Host "     python Hand_Tracker.py" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  3. For Arduino/ESP32 code:" -ForegroundColor White
 Write-Host "     - Install Arduino IDE from: https://www.arduino.cc/en/software" -ForegroundColor Gray
@@ -259,6 +259,6 @@ Write-Host "       File > Preferences > Additional Board Manager URLs" -Foregrou
 Write-Host "       Add: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json" -ForegroundColor Gray
 Write-Host "       Then: Tools > Board > Boards Manager > Search 'ESP32' > Install" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  4. Update the COM port in hand_direction_tracker.py:" -ForegroundColor White
+Write-Host "  4. Update the COM port in Hand_Tracker.py:" -ForegroundColor White
 Write-Host "     Change 'COM11' to your actual COM port" -ForegroundColor Gray
 Write-Host ""

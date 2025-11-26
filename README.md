@@ -18,8 +18,8 @@ Top-level files/folders (each entry explains what the file does):
 - `Serial_Frompc_to_arduino.java`
   - Java program whose name indicates it acts as a serial bridge from PC to Arduino. Inspect the file for exact behavior.
 
-- `mediapipe_hand_direction/`
-  - `hand_direction_tracker.py`  Main Python hand tracker. Uses MediaPipe to detect hand keypoints, derives gesture labels (e.g., Forward, Backward, Stop, rotate_cw, rotate_ccw, Center, etc.). Stabilizes labels across frames and writes chosen labels to the configured serial port (change COM port and baud inside the script).
+- `Hand_Tracking/`
+  - `Hand_Tracker.py`  Main Python hand tracker. Uses MediaPipe to detect hand keypoints, derives gesture labels (e.g., Forward, Backward, Stop, rotate_cw, rotate_ccw, Center, etc.). Stabilizes labels across frames and writes chosen labels to the configured serial port (change COM port and baud inside the script).
   - `serial_monitor.py`  Simple Python script to open a serial port and print incoming lines. Useful for debugging what the microcontroller prints back.
 
 - `Wifi_ESP32_Com_Serial/`
@@ -63,7 +63,7 @@ Top-level files/folders (each entry explains what the file does):
   - Numeric ASCII commands  consumed by `Motor_Control_Serial_Com.ino`.
 
 Integration options:
-- Map labels to integers in `mediapipe_hand_direction/hand_direction_tracker.py` and send numeric ASCII codes matching `Motor_Control_Serial_Com.ino`.
+- Map labels to integers in `Hand_Tracking/Hand_Tracker.py` and send numeric ASCII codes matching `Motor_Control_Serial_Com.ino`.
 - Or modify the motor sketch to parse string labels instead of numeric codes.
 
 Suggested mapping (example mapping you can adopt):
@@ -84,8 +84,8 @@ Suggested mapping (example mapping you can adopt):
 
 ## Tips and debugging
 
-- Ensure serial port and baud rate match across sender and receiver. Update COM port in `hand_direction_tracker.py` and `serial_monitor.py`.
-- Use `mediapipe_hand_direction/serial_monitor.py` to confirm what the microcontroller prints back.
+- Ensure serial port and baud rate match across sender and receiver. Update COM port in `Hand_Tracking/constant.py` (used by both `Hand_Tracker.py` and `serial_monitor.py`).
+- Use `Hand_Tracking/serial_monitor.py` to confirm what the microcontroller prints back.
 - Use the Arduino / PlatformIO serial monitor (e.g., 115200 baud) to view debug prints from ESP32 sketches.
 - If using ESP-NOW, verify both sender and receiver MAC addresses and WiFi mode (STA for ESP-NOW peers).
 
@@ -102,5 +102,5 @@ Suggested mapping (example mapping you can adopt):
 ## Completion
 
 - Created `README.md` with an overview, setup, per-file explanations, run instructions, and tips. If you want, I can also:
-  - Patch `mediapipe_hand_direction/hand_direction_tracker.py` to emit numeric codes matching `Motor_Control_Serial_Com.ino`.
+  - Patch `Hand_Tracking/Hand_Tracker.py` to emit numeric codes matching `Motor_Control_Serial_Com.ino`.
   - Commit the README and open a PR.

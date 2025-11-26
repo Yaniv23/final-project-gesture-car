@@ -34,7 +34,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 1. Copy and paste the commands below, updating the path to match your machine:
 
 ```powershell
-cd "C:\path\to\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\Hand_Tracking"
 ```
 
 ```powershell
@@ -42,7 +42,7 @@ cd "C:\path\to\final-project-gesture-car\mediapipe_hand_direction"
 ```
 
 ```powershell
-python hand_direction_tracker.py
+python Hand_Tracker.py
 ```
 
 2. A camera window will open. Show your hand to the camera.
@@ -53,8 +53,8 @@ python hand_direction_tracker.py
 If you want to control the car:
 
 1. Connect your ESP32 to the computer via USB
-2. Open `hand_direction_tracker.py` in a text editor
-3. Find line 15 that says: `SERIAL_PORT = 'COM11'`
+2. Open `Hand_Tracker.py` in a text editor
+3. Find the line that says: `COM_PORT = 'COM11'` (or check `constant.py`)
 4. Change `'COM11'` to your ESP32's COM port (see below how to find it)
 
 ### How to Find Your COM Port
@@ -91,9 +91,9 @@ Look for a port like COM3, COM4, COM5, etc. Use that number in the script.
 **To start the hand tracker, always run these 3 commands (with your path):**
 
 ```powershell
-cd "C:\path\to\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\Hand_Tracking"
 .\venv\Scripts\Activate.ps1
-python hand_direction_tracker.py
+python Hand_Tracker.py
 ```
 
 That's it! You're ready to go.
