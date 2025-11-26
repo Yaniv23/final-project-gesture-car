@@ -4,35 +4,37 @@ Follow these steps to set up the project. Just copy and paste the commands.
 
 ## Step 1: Install Dependencies
 
-### Option A: Double-Click (Easiest)
+> These instructions assume you downloaded or cloned the project to a folder such as `C:\Users\you\Documents\gesture-car`. Replace that path with wherever you stored the repo.
 
-1. Go to the `setup` folder
-2. Double-click `install_dependencies.bat`
-3. Wait for it to finish
+### Option A: File Explorer (Easiest)
 
-### Option B: PowerShell
+1. Open File Explorer and browse to your project folder  
+   Example: `C:\Users\you\Documents\gesture-car`
+2. Open the `setup` subfolder
+3. Double-click `install_dependencies.bat`
+4. Wait for the terminal window to finish (it can take a few minutes)
+
+### Option B: PowerShell (copy/paste friendly)
 
 1. Open PowerShell
-2. Copy and paste this:
+2. Run the command below, replacing the path with the folder where the repo lives:
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car"
+cd "C:\path\to\final-project-gesture-car"
 .\setup\install_dependencies.ps1
 ```
 
-**If you get an error about execution policy, copy and paste this first:**
+**If you get an execution-policy error, run this once and try again:**
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-Then try again.
-
 ## Step 2: Run the Hand Tracker
 
-1. Copy and paste these commands one by one:
+1. Copy and paste the commands below, updating the path to match your machine:
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\mediapipe_hand_direction"
 ```
 
 ```powershell
@@ -86,10 +88,10 @@ Look for a port like COM3, COM4, COM5, etc. Use that number in the script.
 
 ## Quick Reference
 
-**To start the hand tracker, always run these 3 commands:**
+**To start the hand tracker, always run these 3 commands (with your path):**
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\mediapipe_hand_direction"
 .\venv\Scripts\Activate.ps1
 python hand_direction_tracker.py
 ```
