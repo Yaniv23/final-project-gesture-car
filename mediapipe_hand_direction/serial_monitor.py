@@ -1,9 +1,10 @@
 import serial
+from constant import COM_PORT, BAUD_RATE
 
-# Open COM11 at 115200 baud
-ser = serial.Serial('COM11', 115200, timeout=1)
+# Open serial connection to ESP32
+ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
 
-print("Listening to ESP32 on COM11...\n")
+print(f"Listening to ESP32 on {COM_PORT}...\n")
 
 while True:
     try:

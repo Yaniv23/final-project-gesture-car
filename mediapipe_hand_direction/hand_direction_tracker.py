@@ -4,6 +4,7 @@ import math
 import serial
 import serial.tools.list_ports
 import time
+from constant import COM_PORT, BAUD_RATE
 
 # === SETUP ===
 mp_hands = mp.solutions.hands
@@ -14,7 +15,6 @@ cap = cv2.VideoCapture(0)
 
 # Serial to ESP32 - Try to connect, but make it optional
 ser = None
-COM_PORT = 'COM9'  # Default COM port, can be changed here
 
 def find_available_ports():
     """Find all available COM ports"""
@@ -26,7 +26,7 @@ def find_available_ports():
 
 # Try to connect to serial port
 try:
-    ser = serial.Serial(COM_PORT, 115200, timeout=0.1)
+    ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
     time.sleep(2)
     print(f"[OK] Connected to {COM_PORT}")
 except serial.SerialException as e:
