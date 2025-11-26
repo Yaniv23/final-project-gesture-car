@@ -1,6 +1,8 @@
 # Gesture Car Project - Dependency Installation Script
 # This script sets up all Python dependencies needed for the project
 
+$COM_PORT = 'COM9' # Update this to match your ESP32's COM port
+
 # Helper function to find script if called with wrong path
 function Find-ScriptPath {
     $currentDir = Get-Location
@@ -30,13 +32,11 @@ Write-Host "Gesture Car Project - Setup Script" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Check if Python is installed
+
 Write-Host "Checking Python installation..." -ForegroundColor Yellow
 
-# Try to find Python 3.10 first (best for MediaPipe compatibility)
 $pythonCmd = $null
 $pythonVersion = $null
-$pythonExe = $null
 
 # Check for Python 3.10 using py launcher
 $py310Check = Get-Command py -ErrorAction SilentlyContinue
@@ -45,14 +45,11 @@ if ($py310Check) {
         $py310Version = py -3.10 --version 2>&1
         if ($LASTEXITCODE -eq 0 -and $py310Version -match "Python 3\.10") {
             $pythonCmd = "py -3.10"
-            $pythonExe = "py -3.10"
             $pythonVersion = $py310Version
-            Write-Host "[OK] Found Python 3.10 (recommended for MediaPipe): $pythonVersion" -ForegroundColor Green
+            Write-Host "[OK] Found Python 3.10: $pythonVersion" -ForegroundColor Green
         }
     }
-    catch {
-        # Python 3.10 not available via py launcher
-    }
+    catch {}
 }
 
 # If Python 3.10 not found, check for default python
@@ -60,7 +57,6 @@ if (-not $pythonCmd) {
     $pythonCheck = Get-Command python -ErrorAction SilentlyContinue
     if ($pythonCheck) {
         $pythonCmd = "python"
-        $pythonExe = "python"
         $pythonVersion = python --version 2>&1
         Write-Host "[OK] Found: $pythonVersion" -ForegroundColor Green
     }
@@ -74,23 +70,17 @@ if (-not $pythonCmd) {
             $pyVersion = py --version 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $pythonCmd = "py"
-                $pythonExe = "py"
                 $pythonVersion = $pyVersion
                 Write-Host "[OK] Found: $pythonVersion" -ForegroundColor Green
             }
         }
-        catch {
-            # py launcher not working
-        }
+        catch {}
     }
 }
 
 if (-not $pythonCmd) {
     Write-Host "[ERROR] Python is not installed or not in PATH!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please install Python 3.10 (recommended) or 3.7+ from:" -ForegroundColor Yellow
-    Write-Host "  https://www.python.org/downloads/release/python-3100/" -ForegroundColor Yellow
-    Write-Host ""
+    Write-Host "Install Python 3.10 from: https://www.python.org/downloads/release/python-3100/" -ForegroundColor Yellow
     Write-Host "Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Yellow
     exit 1
 }
@@ -102,49 +92,25 @@ if ($pythonVersion -match $versionPattern) {
     $minorVersion = [int]$matches[2]
     if ($majorVersion -lt 3 -or ($majorVersion -eq 3 -and $minorVersion -lt 7)) {
         Write-Host "[ERROR] Python 3.7 or higher is required!" -ForegroundColor Red
-        $versionDisplay = "Python " + $majorVersion + "." + $minorVersion
-        Write-Host "  Current version: $versionDisplay" -ForegroundColor Red
+        Write-Host "  Current version: Python $majorVersion.$minorVersion" -ForegroundColor Red
         exit 1
     }
-    # Check if Python version is over 3.12 (mediapipe compatibility issue)
     if ($majorVersion -gt 3 -or ($majorVersion -eq 3 -and $minorVersion -gt 12)) {
         Write-Host "[WARNING] Python version is over 3.12!" -ForegroundColor Yellow
-        $versionDisplay = "Python " + $majorVersion + "." + $minorVersion
-        Write-Host "  Current version: $versionDisplay" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "MediaPipe may not be compatible with Python versions above 3.12." -ForegroundColor Yellow
-        Write-Host "It is recommended to use Python 3.10 for best compatibility." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Python 3.10 is available. Use: py -3.10" -ForegroundColor Yellow
-        Write-Host "Or download Python 3.10 from:" -ForegroundColor Yellow
-        Write-Host "  https://www.python.org/downloads/release/python-3100/" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Do you want to continue anyway? (y/N): " -ForegroundColor Yellow -NoNewline
+        Write-Host "MediaPipe may not be compatible. Python 3.10 is recommended." -ForegroundColor Yellow
+        Write-Host "Continue anyway? (y/N): " -ForegroundColor Yellow -NoNewline
         $continue = Read-Host
         if ($continue -ne "y" -and $continue -ne "Y") {
-            Write-Host "Installation cancelled. Please use Python 3.10 and try again." -ForegroundColor Red
-            Write-Host "  Run: py -3.10 -m venv venv" -ForegroundColor Yellow
+            Write-Host "Installation cancelled." -ForegroundColor Red
             exit 1
         }
-        Write-Host "Continuing with current Python version..." -ForegroundColor Yellow
-        Write-Host ""
     }
 }
 
-# Navigate to the Hand_Tracking directory
-# Script is in setup/ folder, so go up one level to project root
-# Use absolute path to work from any directory
 $scriptFullPath = Find-ScriptPath
-
 if (-not $scriptFullPath) {
     Write-Host "[ERROR] Could not locate the script!" -ForegroundColor Red
-    Write-Host "  Current directory: $(Get-Location)" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Please run the script using one of these methods:" -ForegroundColor Yellow
-    Write-Host "  1. From project root: .\setup\install_dependencies.ps1" -ForegroundColor White
-    Write-Host "  2. From Hand_Tracking: ..\setup\install_dependencies.ps1" -ForegroundColor White
-    Write-Host "  3. Using call operator: & '.\setup\install_dependencies.ps1'" -ForegroundColor White
-    Write-Host "  4. Using full path: & 'D:\Final Project\FinalRepo\final-project-gesture-car\setup\install_dependencies.ps1'" -ForegroundColor White
+    Write-Host "Run from project root: .\setup\install_dependencies.ps1" -ForegroundColor Yellow
     exit 1
 }
 
@@ -154,31 +120,22 @@ $handTrackingDir = Join-Path $projectRoot "Hand_Tracking"
 
 if (-not (Test-Path $handTrackingDir)) {
     Write-Host "[ERROR] Directory 'Hand_Tracking' not found!" -ForegroundColor Red
-    Write-Host "  Make sure you're running this script from the project root." -ForegroundColor Yellow
     exit 1
 }
 
 Set-Location $handTrackingDir
-Write-Host "[OK] Changed to directory: $handTrackingDir" -ForegroundColor Green
-Write-Host ""
 
-# Check if virtual environment exists
 $venvPath = Join-Path $handTrackingDir "venv"
 if (Test-Path $venvPath) {
     Write-Host "Virtual environment already exists." -ForegroundColor Yellow
-    Write-Host "Do you want to recreate it? (y/N): " -ForegroundColor Yellow -NoNewline
+    Write-Host "Recreate it? (y/N): " -ForegroundColor Yellow -NoNewline
     $recreate = Read-Host
     if ($recreate -eq "y" -or $recreate -eq "Y") {
-        Write-Host "Removing existing virtual environment..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force $venvPath
         Write-Host "[OK] Removed old virtual environment" -ForegroundColor Green
     }
-    else {
-        Write-Host "Using existing virtual environment." -ForegroundColor Green
-    }
 }
 
-# Create virtual environment if it doesn't exist
 if (-not (Test-Path $venvPath)) {
     Write-Host "Creating virtual environment..." -ForegroundColor Yellow
     Invoke-Expression "$pythonCmd -m venv venv"
@@ -189,7 +146,6 @@ if (-not (Test-Path $venvPath)) {
     Write-Host "[OK] Virtual environment created" -ForegroundColor Green
 }
 
-# Activate virtual environment
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 $activateScript = Join-Path $venvPath "Scripts\Activate.ps1"
 if (Test-Path $activateScript) {
@@ -201,7 +157,6 @@ else {
     exit 1
 }
 
-# Upgrade pip
 Write-Host ""
 Write-Host "Upgrading pip..." -ForegroundColor Yellow
 Invoke-Expression "$pythonCmd -m pip install --upgrade pip --quiet"
@@ -211,12 +166,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] pip upgraded" -ForegroundColor Green
 
-# Install dependencies
 Write-Host ""
 Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
 $requirementsFile = Join-Path $handTrackingDir "requirements.txt"
 if (Test-Path $requirementsFile) {
-    # Use pip from the virtual environment
     $venvPip = Join-Path $venvPath "Scripts\pip.exe"
     if (Test-Path $venvPip) {
         & $venvPip install -r requirements.txt
@@ -235,30 +188,13 @@ else {
     exit 1
 }
 
-# Summary
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Python dependencies have been installed successfully." -ForegroundColor Green
-Write-Host ""
 Write-Host "To use the project:" -ForegroundColor Yellow
-Write-Host "  1. Activate the virtual environment:" -ForegroundColor White
-Write-Host "     cd Hand_Tracking" -ForegroundColor Gray
-Write-Host "     .\venv\Scripts\Activate.ps1" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  2. Run the hand tracker:" -ForegroundColor White
-Write-Host "     python Hand_Tracker.py" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  3. For Arduino/ESP32 code:" -ForegroundColor White
-Write-Host "     - Install Arduino IDE from: https://www.arduino.cc/en/software" -ForegroundColor Gray
-Write-Host "     - Or install PlatformIO for VS Code" -ForegroundColor Gray
-Write-Host "     - Install ESP32 board support in Arduino IDE:" -ForegroundColor Gray
-Write-Host "       File > Preferences > Additional Board Manager URLs" -ForegroundColor Gray
-Write-Host "       Add: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json" -ForegroundColor Gray
-Write-Host "       Then: Tools > Board > Boards Manager > Search 'ESP32' > Install" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  4. Update the COM port in Hand_Tracker.py:" -ForegroundColor White
-Write-Host "     Change 'COM11' to your actual COM port" -ForegroundColor Gray
+Write-Host "  1. Activate: cd Hand_Tracking && .\venv\Scripts\Activate.ps1" -ForegroundColor White
+Write-Host "  2. Run: python Hand_Tracker.py" -ForegroundColor White
+Write-Host "  3. Update COM port in Hand_Tracking/constant.py if needed" -ForegroundColor White
 Write-Host ""
