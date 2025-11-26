@@ -1,7 +1,6 @@
 # Gesture Car Project - Dependency Installation Script
 # This script sets up all Python dependencies needed for the project
 
-$COM_PORT = 'COM9' # Update this to match your ESP32's COM port
 
 # Helper function to find script if called with wrong path
 function Find-ScriptPath {
