@@ -54,7 +54,7 @@ def get_direction_label(angle_deg):
     elif 22.5 < angle_deg <= 67.5:
         return "diagonal_forward_right"
     elif 67.5 < angle_deg <= 112.5:
-        return "Up"
+        return "Forward"
     elif 112.5 < angle_deg <= 157.5:
         return "diagonal_forward_left"
     elif 157.5 < angle_deg or angle_deg <= -157.5:
@@ -62,7 +62,7 @@ def get_direction_label(angle_deg):
     elif -157.5 < angle_deg <= -112.5:
         return "diagonal_backward_left"
     elif -112.5 < angle_deg <= -67.5:
-        return "Down"
+        return "Backward"
     elif -67.5 < angle_deg <= -22.5:
         return "diagonal_backward_right"
     else:

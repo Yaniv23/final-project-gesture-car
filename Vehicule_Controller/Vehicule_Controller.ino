@@ -4,29 +4,30 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <ESP32Servo.h>
+#include <esp_wifi.h>
 
 //==Front Wheel==
-#define FrontR_IN1 2
-#define FrontR_IN2 4
-#define FrontR_ENA 3 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
+#define FrontR_IN1 35
+#define FrontR_IN2 32
+#define FrontR_ENA 34 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
 
-#define FrontL_IN3 5
-#define FrontL_IN4 7    
-#define FrontL_ENB 6 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
+#define FrontL_IN3 33
+#define FrontL_IN4 25    
+#define FrontL_ENA 34 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
 
 //==Back Wheel==
-#define BackR_IN1 8
-#define BackR_IN2 10
-#define BackR_ENA 9 //PWM
+#define BackR_IN1 27
+#define BackR_IN2 14
+#define BackR_ENA 26 //PWM
 
-#define BackL_IN3 13
-#define BackL_IN4 12
-#define BackL_ENB 11 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
+#define BackL_IN3 12
+#define BackL_IN4 13
+#define BackL_ENA 26 //PWM  //All the EN pin will be on 1 pin since they are all the same speed
 
 // Servo + sensor pins (update to match your wiring)
-const int SERVO_PIN = 14;   // PWM-capable pin
-const int TRIG_PIN = 26;    // HC-SR04 trigger
-const int ECHO_PIN = 27;    // HC-SR04 echo (input only)
+const int SERVO_PIN = 4;   // PWM-capable pin
+const int TRIG_PIN = 18;    // HC-SR04 trigger
+const int ECHO_PIN = 16;    // HC-SR04 echo (input only)
 
 //Define Speed
 const int speed_slow = 150; //Slow speed
@@ -92,8 +93,7 @@ int commandToInt(const char* command) {
   if (strEquals(command, "diagonal_backward_right")) return 12;
   
   // Additional mappings for direction labels
-  if (strEquals(command, "Up")) return 1;  // Map "Up" to Forward
-  if (strEquals(command, "Down")) return 2;  // Map "Down" to Backward
+
   if (strEquals(command, "Center")) return 0;  // Map "Center" to Stop
   
   return -1;  // Unknown command
@@ -153,28 +153,27 @@ void setup() {
   Serial.println("⚠️ Hardware disabled - Testing ESP-NOW only");
   Serial.println("========================================\n");
 
-  // MOTOR PINS DISABLED FOR TESTING
-  // Initialize motor pins as outputs
-  // pinMode(FrontR_IN1, OUTPUT);
-  // pinMode(FrontR_IN2, OUTPUT);
-  // pinMode(FrontR_ENA, OUTPUT);
-  // pinMode(FrontL_IN3, OUTPUT);
-  // pinMode(FrontL_IN4, OUTPUT);
-  // pinMode(FrontL_ENB, OUTPUT);
-  // pinMode(BackR_IN1, OUTPUT);
-  // pinMode(BackR_IN2, OUTPUT);
-  // pinMode(BackR_ENA, OUTPUT);
-  // pinMode(BackL_IN3, OUTPUT);
-  // pinMode(BackL_IN4, OUTPUT);
-  // pinMode(BackL_ENB, OUTPUT);
+  // MOTOR PINS - Initialize motor pins as outputs
+  pinMode(FrontR_IN1, OUTPUT);
+  pinMode(FrontR_IN2, OUTPUT);
+  pinMode(FrontR_ENA, OUTPUT);
+  pinMode(FrontL_IN3, OUTPUT);
+  pinMode(FrontL_IN4, OUTPUT);
+  pinMode(FrontL_ENA, OUTPUT);
+  pinMode(BackR_IN1, OUTPUT);
+  pinMode(BackR_IN2, OUTPUT);
+  pinMode(BackR_ENA, OUTPUT);
+  pinMode(BackL_IN3, OUTPUT);
+  pinMode(BackL_IN4, OUTPUT);
+  pinMode(BackL_ENA, OUTPUT);
   Serial.println("[TEST] Motor pins initialization skipped");
 
   // SERVO + SENSOR DISABLED FOR TESTING
   // Servo + sensor setup
   scanServo.attach(SERVO_PIN);
-  // pinMode(TRIG_PIN, OUTPUT);
-  // pinMode(ECHO_PIN, INPUT);
-  // digitalWrite(TRIG_PIN, LOW);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  digitalWrite(TRIG_PIN, LOW);
   lastServoStepMs = millis();
   sweepFinishedMs = millis();
   sweepResting = false;
@@ -185,7 +184,18 @@ void setup() {
 
   // Initialize ESP-NOW
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect(); // Disconnect from any previous connection
+  delay(200); // Give WiFi time to initialize
   Serial.println("🔧 ESP32 set to STA mode");
+  
+  // Print MAC address using esp_wifi_get_mac
+  uint8_t mac[6];
+  esp_wifi_get_mac(WIFI_IF_STA, mac);
+  Serial.print("📡 MAC Address: ");
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  Serial.println(macStr);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("❌ ESP-NOW init failed");
@@ -239,169 +249,169 @@ void loop() {
 void stop_motors() {
   Serial.println("[MOTOR] ⏹️ STOP - All motors stopped");
   Serial.println("        [SIMULATED] FrontR: OFF, FrontL: OFF, BackR: OFF, BackL: OFF");
-  // digitalWrite(FrontR_IN1, LOW);
-  // digitalWrite(FrontR_IN2, LOW);
-  // analogWrite(FrontR_ENA, 0);
-  // digitalWrite(FrontL_IN3, LOW);
-  // digitalWrite(FrontL_IN4, LOW);
+  digitalWrite(FrontR_IN1, LOW);
+  digitalWrite(FrontR_IN2, LOW);
+  analogWrite(FrontR_ENA, 0);
+  digitalWrite(FrontL_IN3, LOW);
+  digitalWrite(FrontL_IN4, LOW);
   // analogWrite(FrontL_ENB, 0);
-  // digitalWrite(BackR_IN1, LOW);
-  // digitalWrite(BackR_IN2, LOW);
-  // analogWrite(BackR_ENA, 0);
-  // digitalWrite(BackL_IN3, LOW);
-  // digitalWrite(BackL_IN4, LOW);
+  digitalWrite(BackR_IN1, LOW);
+  digitalWrite(BackR_IN2, LOW);
+  analogWrite(BackR_ENA, 0);
+  digitalWrite(BackL_IN3, LOW);
+  digitalWrite(BackL_IN4, LOW);
   // analogWrite(BackL_ENB, 0);
 }
 
 void Forward() {
   Serial.println("[MOTOR] ➡️ FORWARD");
   Serial.println("        [SIMULATED] All wheels: Forward (FR, FL, BR, BL)");
-  // Forward_FR();
-  // Forward_FL();
-  // Forward_BR();
-  // Forward_BL();
+  Forward_FR();
+  Forward_FL();
+  Forward_BR();
+  Forward_BL();
 }
 
 void Backward() {
   Serial.println("[MOTOR] ⬅️ BACKWARD");
   Serial.println("        [SIMULATED] All wheels: Backward (FR, FL, BR, BL)");
-  // Backward_FR();
-  // Backward_FL();
-  // Backward_BR();
-  // Backward_BL();
+  Backward_FR();
+  Backward_FL();
+  Backward_BR();
+  Backward_BL();
 }
 
 void Sideway_Right() {
   Serial.println("[MOTOR] ➡️ STRAFE RIGHT");
   Serial.println("        [SIMULATED] FR: Backward, FL: Forward, BR: Forward, BL: Backward");
-  // Backward_FR();
-  // Forward_FL();
-  // Forward_BR();
-  // Backward_BL();
+  Backward_FR();
+  Forward_FL();
+  Forward_BR();
+  Backward_BL();
 }
 
 void Sideway_Left() {
   Serial.println("[MOTOR] ⬅️ STRAFE LEFT");
   Serial.println("        [SIMULATED] FR: Forward, FL: Backward, BR: Backward, BL: Forward");
-  // Forward_FR();
-  // Backward_FL();
-  // Backward_BR();
-  // Forward_BL();
+  Forward_FR();
+  Backward_FL();
+  Backward_BR();
+  Forward_BL();
 }
 
 void pivot_left() {
   Serial.println("[MOTOR] ↪️ PIVOT LEFT");
   Serial.println("        [SIMULATED] FR: Forward, FL: Backward");
-  // stop_motors();
-  // Forward_FR();
-  // Backward_FL();
+  stop_motors();
+  Forward_FR();
+  Backward_FL();
 }
 
 void pivot_right() {
   Serial.println("[MOTOR] ↩️ PIVOT RIGHT");
   Serial.println("        [SIMULATED] FR: Backward, FL: Forward");
-  // stop_motors();
-  // Backward_FR();
-  // Forward_FL();
+  stop_motors();
+  Backward_FR();
+  Forward_FL();
 }
 
 void rotate_cw() {
   Serial.println("[MOTOR] 🔄 ROTATE CLOCKWISE");
   Serial.println("        [SIMULATED] FR: Backward, FL: Forward, BR: Backward, BL: Forward");
-  // Backward_FR();
-  // Forward_FL();
-  // Backward_BR();
-  // Forward_BL();
+  Backward_FR();
+  Forward_FL();
+  Backward_BR();
+  Forward_BL();
 }
 
 void rotate_ccw() {
   Serial.println("[MOTOR] 🔄 ROTATE COUNTER-CLOCKWISE");
   Serial.println("        [SIMULATED] FR: Forward, FL: Backward, BR: Forward, BL: Backward");
-  // Forward_FR();
-  // Backward_FL();
-  // Forward_BR();
-  // Backward_BL();
+  Forward_FR();
+  Backward_FL();
+  Forward_BR();
+  Backward_BL();
 }
 
 void diagonal_forward_left() {
   Serial.println("[MOTOR] ↗️ DIAGONAL FORWARD LEFT");
   Serial.println("        [SIMULATED] FR: Forward, BL: Forward");
-  // stop_motors();
-  // Forward_FR();
-  // Forward_BL();
+  stop_motors();
+  Forward_FR();
+  Forward_BL();
 }
 
 void diagonal_forward_right() {
   Serial.println("[MOTOR] ↖️ DIAGONAL FORWARD RIGHT");
   Serial.println("        [SIMULATED] FL: Forward, BR: Forward");
-  // stop_motors();
-  // Forward_FL();
-  // Forward_BR();
+  stop_motors();
+  Forward_FL();
+  Forward_BR();
 }
 
 void diagonal_backward_left() {
   Serial.println("[MOTOR] ↘️ DIAGONAL BACKWARD LEFT");
   Serial.println("        [SIMULATED] FR: Backward, BL: Backward");
-  // stop_motors();
-  // Backward_FR();
-  // Backward_BL();
+  stop_motors();
+  Backward_FR();
+  Backward_BL();
 }
 
 void diagonal_backward_right() {
   Serial.println("[MOTOR] ↙️ DIAGONAL BACKWARD RIGHT");
   Serial.println("        [SIMULATED] FL: Backward, BR: Backward");
-  // stop_motors();
-  // Backward_FL();
-  // Backward_BR();
+  stop_motors();
+  Backward_FL();
+  Backward_BR();
 }
 
 // === Individual Wheel Control (DISABLED IN TEST MODE) ===
 void Forward_FR() {
-  // digitalWrite(FrontR_IN1, HIGH);
-  // digitalWrite(FrontR_IN2, LOW);
-  // analogWrite(FrontR_ENA, speed_slow);
+    digitalWrite(FrontR_IN1, HIGH);
+    digitalWrite(FrontR_IN2, LOW);
+    analogWrite(FrontR_ENA, speed_slow);
 }
 
 void Backward_FR() {
-  // digitalWrite(FrontR_IN1, LOW);
-  // digitalWrite(FrontR_IN2, HIGH);
-  // analogWrite(FrontR_ENA, speed_slow);
+  digitalWrite(FrontR_IN1, LOW);
+  digitalWrite(FrontR_IN2, HIGH);
+  analogWrite(FrontR_ENA, speed_slow);
 }
 
 void Forward_FL() {
-  // digitalWrite(FrontL_IN3, HIGH);
-  // digitalWrite(FrontL_IN4, LOW);
-  // analogWrite(FrontL_ENB, speed_slow);
+  digitalWrite(FrontL_IN3, HIGH);
+  digitalWrite(FrontL_IN4, LOW);
+  analogWrite(FrontL_ENA, speed_slow);
 }
 
 void Backward_FL() {
-  // digitalWrite(FrontL_IN3, LOW);
-  // digitalWrite(FrontL_IN4, HIGH);
-  // analogWrite(FrontL_ENB, speed_slow);
+  digitalWrite(FrontL_IN3, LOW);
+  digitalWrite(FrontL_IN4, HIGH);
+  analogWrite(FrontL_ENA, speed_slow);
 }
 
 void Forward_BR() {
-  // digitalWrite(BackR_IN1, HIGH);
-  // digitalWrite(BackR_IN2, LOW);
-  // analogWrite(BackR_ENA, speed_slow);
+  digitalWrite(BackR_IN1, HIGH);
+  digitalWrite(BackR_IN2, LOW);
+  analogWrite(BackR_ENA, speed_slow);
 }
 
 void Backward_BR() {
-  // digitalWrite(BackR_IN1, LOW);
-  // digitalWrite(BackR_IN2, HIGH);
-  // analogWrite(BackR_ENA, speed_slow);
+  digitalWrite(BackR_IN1, LOW);
+  digitalWrite(BackR_IN2, HIGH);
+  analogWrite(BackR_ENA, speed_slow);
 }
 
 void Forward_BL() {
-  // digitalWrite(BackL_IN3, HIGH);
-  // digitalWrite(BackL_IN4, LOW);
-  // analogWrite(BackL_ENB, speed_slow);
+  digitalWrite(BackL_IN3, HIGH);
+  digitalWrite(BackL_IN4, LOW);
+  analogWrite(BackL_ENA, speed_slow);
 }
 
 void Backward_BL() {
-  // digitalWrite(BackL_IN3, LOW);
-  // digitalWrite(BackL_IN4, HIGH);
-  // analogWrite(BackL_ENB, speed_slow);
+  digitalWrite(BackL_IN3, LOW);
+  digitalWrite(BackL_IN4, HIGH);
+  analogWrite(BackL_ENA, speed_slow);
 }
 
 // SERVO/SENSOR FUNCTIONS DISABLED FOR TESTING
@@ -424,17 +434,17 @@ void updateServoSensor() {
   lastServoStepMs = now;
   scanServo.write(currentServoAngle);
 
-  // lastDistanceCm = readDistanceCM();
+  lastDistanceCm = readDistanceCM();
   // Serial.print("[SERVO] Angle: ");
   // Serial.print(currentServoAngle);
   // Serial.print("° | Distance: ");
   // Serial.print(lastDistanceCm);
   // Serial.println(" cm");
 
-  // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM) {
-  //   Serial.println("⚠️ Object detected close!");
-  //   stop_motors();
-  // }
+  if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM) {
+    Serial.println("⚠️ Object detected close!");
+    // stop_motors();
+  }
 
   if (currentServoAngle >= SERVO_MAX_ANGLE) {
     sweepResting = true;
@@ -446,5 +456,13 @@ void updateServoSensor() {
 
 long readDistanceCM() {
   // DISABLED - Returns simulated value for testing
-  return -1; // No sensor reading in test mode
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  long distance = duration * 0.034 / 2;
+  return distance; // in cm
 }
