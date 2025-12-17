@@ -4,9 +4,33 @@ Follow these steps to set up the project. Just copy and paste the commands.
 
 ## Step 1: Install Dependencies
 
-> These instructions assume you downloaded or cloned the project to a folder such as `C:\Users\you\Documents\gesture-car`. Replace that path with wherever you stored the repo.
+> These instructions assume you downloaded or cloned the project to a folder. Replace the path with wherever you stored the repo.
 
-### Option A: File Explorer (Easiest)
+### Linux/macOS (zsh/bash)
+
+1. Open a terminal (zsh or bash)
+2. Navigate to the project directory and run:
+
+```bash
+cd /path/to/final-project-gesture-car
+./setup/install_dependencies.sh
+```
+
+Or if you're already in the project root:
+
+```bash
+./setup/install_dependencies.sh
+```
+
+**If you get a "permission denied" error, make the script executable first:**
+```bash
+chmod +x setup/install_dependencies.sh
+./setup/install_dependencies.sh
+```
+
+### Windows
+
+#### Option A: File Explorer (Easiest)
 
 1. Open File Explorer and browse to your project folder  
    Example: `C:\Users\you\Documents\gesture-car`
@@ -14,7 +38,7 @@ Follow these steps to set up the project. Just copy and paste the commands.
 3. Double-click `install_dependencies.bat`
 4. Wait for the terminal window to finish (it can take a few minutes)
 
-### Option B: PowerShell (copy/paste friendly)
+#### Option B: PowerShell (copy/paste friendly)
 
 1. Open PowerShell
 2. Run the command below, replacing the path with the folder where the repo lives:
@@ -30,6 +54,21 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 ## Step 2: Run the Hand Tracker
+
+### Linux/macOS
+
+1. Copy and paste the commands below, updating the path to match your machine:
+
+```bash
+cd /path/to/final-project-gesture-car/Hand_Tracking
+source venv/bin/activate
+python Hand_Tracker.py
+```
+
+2. A camera window will open. Show your hand to the camera.
+3. Press `q` to quit.
+
+### Windows
 
 1. Copy and paste the commands below, updating the path to match your machine:
 
@@ -53,11 +92,26 @@ python Hand_Tracker.py
 If you want to control the car:
 
 1. Connect your ESP32 to the computer via USB
-2. Open `Hand_Tracker.py` in a text editor
-3. Find the line that says: `COM_PORT = 'COM11'` (or check `constant.py`)
-4. Change `'COM11'` to your ESP32's COM port (see below how to find it)
+2. Open `Hand_Tracker.py` or `constant.py` in a text editor
+3. Update the serial port (see below how to find it)
 
-### How to Find Your COM Port
+### How to Find Your Serial Port
+
+**Linux/macOS:**
+
+Run this command in the terminal:
+
+```bash
+ls /dev/tty* | grep -E '(USB|ACM)'
+```
+
+Common ports are:
+- Linux: `/dev/ttyUSB0`, `/dev/ttyACM0`
+- macOS: `/dev/tty.usbserial-*`, `/dev/tty.usbmodem*`
+
+Update the port in `Hand_Tracker.py` or `constant.py` (e.g., change `'COM11'` to `'/dev/ttyUSB0'`).
+
+**Windows:**
 
 Copy and paste this in PowerShell:
 
@@ -88,7 +142,15 @@ Look for a port like COM3, COM4, COM5, etc. Use that number in the script.
 
 ## Quick Reference
 
-**To start the hand tracker, always run these 3 commands (with your path):**
+**Linux/macOS - To start the hand tracker, always run these 3 commands (with your path):**
+
+```bash
+cd /path/to/final-project-gesture-car/Hand_Tracking
+source venv/bin/activate
+python Hand_Tracker.py
+```
+
+**Windows - To start the hand tracker, always run these 3 commands (with your path):**
 
 ```powershell
 cd "C:\path\to\final-project-gesture-car\Hand_Tracking"

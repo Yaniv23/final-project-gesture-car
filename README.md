@@ -1,106 +1,208 @@
-# car_gesture_project
+# Gesture-Controlled Car Project
 
-A hands-on project that connects a webcam + MediaPipe hand-gesture tracker to microcontroller sketches (ESP32 / Arduino) to control a mecanum-wheeled car and supporting demo sketches.
+A hands-on project that connects a webcam + MediaPipe hand-gesture tracker to ESP32 microcontrollers to control a mecanum-wheeled car with onboard camera streaming.
 
-This README explains project purpose, dependencies, how to run the hand tracker and serial monitor, and a per-file explanation of the repository contents.
+## System Architecture
+
+The project consists of three main components:
+
+1. **PC Module** - Runs hand tracking and sends control commands
+2. **Vehicle Controller** - ESP32 on the car that receives commands and controls motors + transmission
+3. **Camera Module** - ESP32-S3 on the car that streams video to the PC
+
+## Communication Architecture
 
 
-## Short description
+### Connection Details
 
-- The Python code captures hand gestures using MediaPipe and OpenCV, maps gestures to simple commands, and sends those commands over serial to an ESP32 and to microcontroller sketches that drive motors or forward the commands via ESP-NOW.
+| Connection | Protocol | Details |
+|------------|----------|---------|
+| **PC → ESP32 Sender** | USB Serial | Baud rate: 115200, Port: Configured in `Hand_Tracking/constant.py` |
+| **ESP32 Sender → Vehicle Controller** | ESP-NOW | Wireless 2.4GHz, MAC address configured in sender code |
+| **ESP32-S3 Camera → PC** | WiFi HTTP | MJPEG stream on port 80, IP address displayed in Serial Monitor |
 
-- There is also a Video broadcasting that is under developement who as to bee send from ESP32-S3 on board to the PC.yaniv
+## Main Project Components
 
-## Project file map and explanations
+### `Hand_Tracking/`
+The PC-side hand gesture recognition system.
 
-Top-level files/folders (each entry explains what the file does):
+- **`Hand_Tracker.py`** - Main Python script that:
+  - Captures video from webcam using OpenCV
+  - Uses MediaPipe to detect hand landmarks and gestures
+  - Recognizes gestures: Forward, Backward, Stop, rotate_cw, rotate_ccw, Sideway_Left, Sideway_Right, diagonal movements, Center
+  - Applies stability filtering to prevent command jitter
+  - Sends gesture commands via USB Serial to ESP32 sender
+  - Configure serial port in `constant.py`
 
-- `Serial_Frompc_to_arduino.java`
-  - Java program whose name indicates it acts as a serial bridge from PC to Arduino. Inspect the file for exact behavior.
+- **`constant.py`** - Configuration file for serial communication (COM port and baud rate)
 
-- `Hand_Tracking/`
-  - `Hand_Tracker.py`  Main Python hand tracker. Uses MediaPipe to detect hand keypoints, derives gesture labels (e.g., Forward, Backward, Stop, rotate_cw, rotate_ccw, Center, etc.). Stabilizes labels across frames and writes chosen labels to the configured serial port (change COM port and baud inside the script).
-  - `serial_monitor.py`  Simple Python script to open a serial port and print incoming lines. Useful for debugging what the microcontroller prints back.
+- **`serial_monitor.py`** - Debugging tool to monitor serial communication
 
-- `Wifi_ESP32_Com_Serial/`
-  - `Wifi_ESP32_Com_Serial.ino`  ESP32 sketch that connects to WiFi and exposes an HTTP endpoint (like `/send?cmd=`). It forwards received HTTP query commands to `Serial1` (hardware UART) and supports a Serial <-> Serial1 passthrough. Use when you want to control the car remotely via HTTP.
+- **`requirements.txt`** - Python dependencies (MediaPipe, OpenCV, pyserial)
 
-- `Servo_and_Sensor/`
-  - `Servo_and_Sensor.ino`  Example Arduino sketch demonstrating a servo sweep and an ultrasonic distance sensor (HC-SR04). Prints angles and measured distances and flags when an object is within a threshold.
+### `Vehicule_Controller/`
+The main ESP32 controller on the car.
 
-- `Sender_Code/`
-  - `Sender_Code.ino`  ESP32 ESP-NOW sender example. Reads lines from Serial and sends them as `struct_message` via ESP-NOW to a configured receiver MAC address. Includes send callback and peer configuration logic.
+- **`Vehicule_Controller.ino`** - ESP32 sketch that:
+  - Receives ESP-NOW commands from the sender ESP32
+  - Parses string commands (e.g., "Forward", "Stop", "rotate_cw") into integer codes
+  - Controls 4-motor mecanum drive system (L298N drivers)
+  - Controls servo motor for scanning
+  - Reads ultrasonic distance sensor (HC-SR04)
+  - Supports all movement types: forward, backward, strafe, rotate, diagonal, pivot
 
-- `Reciver_Code/`
-  - `Reciver_Code.ino`  ESP32 ESP-NOW receiver example. Receives ESP-NOW messages, prints sender MAC and received payload, and can trigger local motion routines.
+**Motor Control:**
+- Front Right, Front Left, Back Right, Back Left wheels
+- PWM speed control (slow: 150, fast: 255)
+- Individual wheel control for mecanum movement
 
-- `Motor_Control/`
-  - `Motor_Control.ino`  ESP32 sketch that drives a 4-motor mecanum drive (L298N or similar drivers). It maps incoming commands (strings or structured messages) to movement functions such as:
-    - `moveForward`, `moveBackward`
-    - `slideLeft`, `slideRight`
-    - `rotateLeft`, `rotateRight`
-    - `stopAll`
-  - Uses ESP32 `ledc` PWM API to control motor speed. This sketch can receive commands via ESP-NOW (receiver) or other serial transports depending on how you wire it up.
+**Sensor Integration:**
+- Servo sweeps 0-60° for obstacle scanning
+- Ultrasonic sensor detects obstacles within 20cm threshold
 
-- `Motor_Control_Serial_Com/`
-  - `Motor_Control_Serial_Com.ino`  Arduino/MCU sketch that accepts numeric ASCII commands over Serial (integers 0..12) and executes corresponding motion routines (stop, forward, backward, sideways, pivots, rotates, diagonals). It parses lines from the serial stream and dispatches to functions like `Forward()`, `Backward()`, `rotate_cw()`, etc. This is useful when your controlling host sends simple numeric codes.
+### `ESP_Camera_Module/`
+Onboard camera system for video streaming.
 
-- `Motor_joystick_connection_test/`
-  - `platformio.ini`  PlatformIO project configuration for the joystick test.
-  - `src/main.cpp`  Maps two analog inputs (joystick/potentiometers) into simulated drive messages (power/steer) and prints them on Serial for testing.
+- **`src/main.cpp`** - ESP32-S3 sketch that:
+  - Initializes OV2640 camera module
+  - Connects to WiFi network (configure SSID/password in code)
+  - Serves MJPEG video stream via HTTP on port 80
+  - Provides web interface at root URL (`http://<ESP32_IP>/`)
+  - Stream endpoint: `http://<ESP32_IP>/stream`
 
-- `Motor_Test/`
-  - `platformio.ini` and `src/main.cpp`  Small test project to toggle motor pins and print simple status strings like `FORWARD`, `STOP`, `BACKWARD` for wiring verification.
+- **`src/camera_viewer.py`** - PC-side Python viewer that:
+  - Connects to ESP32-S3 camera stream via HTTP
+  - Displays live video feed using OpenCV
+  - Configure ESP32 IP address in script or via `--ip` argument
 
-- `Reciver_Code/`, `Sender_Code/`, `Motor_Control/`, `Motor_Control_Serial_Com/`
-  - These sketches are complementary: choose one messaging pattern for your project (ESP-NOW string messages, WiFi HTTP bridge, or numeric serial commands) and ensure the tracker script emits the matching format.
+## Testing/Development Folders
 
-## Gesture labels vs motor command formats
+These folders contain individual test sketches for developing and debugging specific functions separately:
 
-- The Python tracker typically writes human-readable labels (e.g., `Forward`, `Stop`, `rotate_ccw`, `rotate_cw`, `Center`, or directional labels from `get_direction_label`).
-- The motor sketches accept either:
-  - String commands (ESP-NOW or Serial strings)  used by `Sender_Code.ino`/`Reciver_Code.ino`/`Motor_Control.ino`.
-  - Numeric ASCII commands  consumed by `Motor_Control_Serial_Com.ino`.
+### `Transmission/`
+- **`Sender_Code/`** - ESP32 ESP-NOW sender (used in main system)
+- **`Reciver_Code/`** - ESP32 ESP-NOW receiver test example
+- **`Wifi_ESP32_Com_Serial/`** - WiFi HTTP bridge test (alternative to ESP-NOW)
 
-Integration options:
-- Map labels to integers in `Hand_Tracking/Hand_Tracker.py` and send numeric ASCII codes matching `Motor_Control_Serial_Com.ino`.
-- Or modify the motor sketch to parse string labels instead of numeric codes.
+### `Motors/`
+- **`Motor_Control/`** - Basic motor control test sketch
+- **`Motor_Control_Serial_Com/`** - Serial command parser test
+- **`Motor_Test/`** - Simple motor pin toggle test
+- **`Motor_joystick_connection_test/`** - Joystick input mapping test
 
-Suggested mapping (example mapping you can adopt):
+### `Sensors/`
+- **`Servo_and_Sensor/`** - Servo and ultrasonic sensor test sketch
 
-- 0 = Stop
-- 1 = Forward
-- 2 = Backward
-- 3 = Sideway_Left
-- 4 = Sideway_Right
-- 5 = pivot_left
-- 6 = pivot_right
-- 7 = rotate_cw
-- 8 = rotate_ccw
-- 9 = diagonal_forward_left
-- 10 = diagonal_forward_right
-- 11 = diagonal_backward_left
-- 12 = diagonal_backward_right
+## Setup Instructions
 
-## Tips and debugging
+### 1. PC Setup (Hand Tracking)
 
-- Ensure serial port and baud rate match across sender and receiver. Update COM port in `Hand_Tracking/constant.py` (used by both `Hand_Tracker.py` and `serial_monitor.py`).
-- Use `Hand_Tracking/serial_monitor.py` to confirm what the microcontroller prints back.
-- Use the Arduino / PlatformIO serial monitor (e.g., 115200 baud) to view debug prints from ESP32 sketches.
-- If using ESP-NOW, verify both sender and receiver MAC addresses and WiFi mode (STA for ESP-NOW peers).
+```bash
+cd Hand_Tracking
+pip install -r requirements.txt
+```
 
-## Suggested small improvements
+Edit `constant.py` to set your ESP32 sender's COM port:
+```python
+COM_PORT = 'COM11'  # Change to your port (e.g., '/dev/ttyUSB0' on Linux)
+BAUD_RATE = 115200
+```
 
-- Add a config JSON/TOML to map gestures to command formats (string vs numeric) and to store serial port/baud settings.
-- Add a small GUI to display recognized gestures and provide manual override buttons.
-- Translate gesture displacement or distance-to-center into motor speed PWM values for proportional control.
+### 2. ESP32 Sender Setup
 
-## License and attribution
+1. Upload `Transmission/Sender_Code/Sender_Code.ino` to an ESP32
+2. Connect ESP32 to PC via USB
+3. Update receiver MAC address in sender code (line 4) to match Vehicle Controller MAC
+4. Open Serial Monitor (115200 baud) to verify connection
 
-- No license is included in this repository. Add an appropriate `LICENSE` file if you want to publish or share this project under a specific license.
+### 3. Vehicle Controller Setup
 
-## Completion
+1. Upload `Vehicule_Controller/Vehicule_Controller.ino` to ESP32 on car
+2. Wire motors, servo, and sensor according to pin definitions in code
+3. Open Serial Monitor (115200 baud) to see MAC address
+4. Copy MAC address to ESP32 sender code
 
-- Created `README.md` with an overview, setup, per-file explanations, run instructions, and tips. If you want, I can also:
-  - Patch `Hand_Tracking/Hand_Tracker.py` to emit numeric codes matching `Motor_Control_Serial_Com.ino`.
-  - Commit the README and open a PR.
+### 4. Camera Module Setup
+
+1. Upload `ESP_Camera_Module/src/main.cpp` to ESP32-S3
+2. Configure WiFi SSID and password in code (lines 8-9)
+3. Open Serial Monitor to see assigned IP address
+4. Update IP in `camera_viewer.py` or use `--ip` argument
+
+## Running the System
+
+### Start Hand Tracking
+```bash
+cd Hand_Tracking
+python Hand_Tracker.py
+```
+
+The script will:
+- Open webcam feed
+- Detect hand gestures
+- Send commands to ESP32 sender via Serial
+- Display recognized gesture on screen
+
+### View Camera Stream
+```bash
+cd ESP_Camera_Module/src
+python camera_viewer.py
+# Or with custom IP:
+python camera_viewer.py --ip 192.168.1.100
+```
+
+## Gesture Commands
+
+The hand tracker recognizes the following gestures:
+
+| Gesture | Command String | Motor Action |
+|---------|---------------|--------------|
+| Closed fist | `Stop` | All motors stop |
+| Index finger up | `Forward` | Move forward |
+| Index finger down | `Backward` | Move backward |
+| Hand open, centered | `Center` | Stop (neutral) |
+| Thumb-index circle (right) | `rotate_cw` | Rotate clockwise |
+| Thumb-index circle (left) | `rotate_ccw` | Rotate counter-clockwise |
+| Hand position-based | `Sideway_Left/Right` | Strafe left/right |
+| Hand position-based | `diagonal_forward_left/right` | Diagonal forward |
+| Hand position-based | `diagonal_backward_left/right` | Diagonal backward |
+
+## Troubleshooting
+
+### Hand Tracking Issues
+- **No serial connection**: Check COM port in `constant.py` matches your ESP32 sender
+- **Commands not sending**: Verify ESP32 sender is connected and Serial Monitor shows "🟢 Sender ready"
+- **Gesture not recognized**: Ensure good lighting and clear hand visibility
+
+### ESP-NOW Communication Issues
+- **Commands not received**: Verify MAC addresses match between sender and receiver
+- **Connection fails**: Ensure both ESP32s are in WiFi STA mode
+- **Check Serial Monitor**: Vehicle Controller prints received commands with MAC address
+ands are being received (check Serial Monitor)
+
+## Hardware Requirements
+
+### PC
+- Webcam (USB)
+- Python 3.7+
+- USB port for ESP32 sender
+
+### Vehicle Controller (ESP32)
+- ESP32 development board
+- 4x DC motors with L298N drivers (or similar)
+- Servo motor (for scanning)
+- HC-SR04 ultrasonic sensor
+- Power supply for motors
+
+### Camera Module (ESP32-S3)
+- ESP32-S3 development board
+- OV2640 camera module
+- WiFi network access
+
+### ESP32 Sender
+- ESP32 development board
+- USB connection to PC
+
+## License
+
+No license is included in this repository. Add an appropriate `LICENSE` file if you want to publish or share this project under a specific license.
