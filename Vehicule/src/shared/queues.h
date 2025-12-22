@@ -30,7 +30,7 @@ extern QueueHandle_t xMotionCommandQueue;
 extern QueueHandle_t xMotorStatusQueue;
 
 // Semaphore: Safety Monitor → Motor Control Task
-// Take = safe to move, Give = emergency stop
+// Semaphore available (can be taken) = safe to move; semaphore taken (unavailable) = emergency stop active
 extern SemaphoreHandle_t xSafetySemaphore;
 
 /**

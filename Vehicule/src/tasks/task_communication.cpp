@@ -15,7 +15,7 @@
 #include "../safety/timeout_monitor.h"
 
 void task_communication(void *pvParameters) {
-    const TickType_t period = pdMS_TO_TICKS(10);  // 10ms period (faster for responsiveness)
+    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION);  // Use config value (100ms = 10 Hz)
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     Serial.println("[TASK_COMM] Communication task started");
@@ -31,7 +31,7 @@ void task_communication(void *pvParameters) {
     
     while (1) {
         // Read command from ESP-NOW queue (ISR puts commands here)
-        if (xQueueReceive(xESPNowQueue, &cmd_byte, pdMS_TO_TICKS(100))) {
+        if (xQueueReceive(xESPNowQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
             // Validate command
             if (isValidCommand(cmd_byte)) {
                 Serial.print("[COMM] Received command byte: 0x");

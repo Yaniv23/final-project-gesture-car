@@ -105,7 +105,7 @@ void motion_strafe_left() {
 }
 
 void motion_strafe_right() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -137,7 +137,7 @@ void motion_rotate_cw() {
 }
 
 void motion_rotate_ccw() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -221,7 +221,7 @@ void motion_diagonal_backward_right() {
 }
 
 void motion_pivot_left() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     

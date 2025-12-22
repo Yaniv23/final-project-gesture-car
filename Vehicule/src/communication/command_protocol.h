@@ -40,4 +40,4 @@ enum CommandByte {
 bool isValidCommand(uint8_t cmd_byte);
 
 
-
+// End of command_protocol.h

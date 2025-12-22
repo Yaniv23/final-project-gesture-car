@@ -12,6 +12,7 @@
 #include "../drivers/motor_driver.h"
 #include "../control/motion_control.h"
 #include "../communication/command_protocol.h"
+#include "../safety/emergency_stop.h"
 
 // Global motor driver instance (defined in main.cpp)
 extern MotorDriver motor_driver;
@@ -28,11 +29,45 @@ void task_motor_control(void *pvParameters) {
     uint8_t cmd_byte = 0;
     
     while (1) {
+        // CRITICAL: Check emergency stop flag FIRST (before any command processing)
+        // This guarantees immediate stop even if semaphore is held by another task
+        // The flag is volatile and checked every loop iteration for guaranteed response
+        if (emergency_stop_is_active()) {
+            // Emergency stop is active - ensure motors are stopped
+            // This is called every loop iteration to guarantee motors stay stopped
+            motion_stop();
+            
+            // Only process STOP command to acknowledge (emergency stop must be cleared separately)
+            // All other commands are blocked
+            if (xQueueReceive(xCommandQueue, &cmd_byte, 0) == pdTRUE) {
+                if (cmd_byte == CMD_STOP) {
+                    // STOP command received - motors already stopped
+                    Serial.println("[MOTOR] STOP (Emergency stop active - use emergency_stop_clear() to resume)");
+                } else {
+                    // Block all other commands during emergency stop
+                    Serial.println("[MOTOR] Command blocked - Emergency stop active!");
+                }
+            }
+            
+            // Continue to next iteration (don't execute any motor commands)
+            // Motors will be stopped again on next iteration if flag still active
+            vTaskDelayUntil(&lastWakeTime, period);
+            continue;
+        }
+        
+        // Emergency stop is NOT active - proceed with normal command processing
         // Try to get command from queue
-        if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(100))) {
-            // Check safety semaphore before executing commands
+        if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
+            // Double-check emergency stop flag (race condition protection)
+            if (emergency_stop_is_active()) {
+                motion_stop();
+                Serial.println("[MOTOR] Emergency stop detected - Command cancelled");
+                vTaskDelayUntil(&lastWakeTime, period);
+                continue;
+            }
+            
+            // Check safety semaphore (secondary safety mechanism)
             // Semaphore is given initially (safe state)
-            // Emergency stop TAKES semaphore (makes it unavailable = unsafe)
             // If we CAN take semaphore, system is safe
             if (xSafetySemaphore != NULL && 
                 xSemaphoreTake(xSafetySemaphore, 0) == pdTRUE) {
@@ -101,13 +136,10 @@ void task_motor_control(void *pvParameters) {
                 // Return semaphore after command execution
                 xSemaphoreGive(xSafetySemaphore);
             } else {
-                // Emergency stop active (semaphore not available) - only allow STOP command
-                if (cmd_byte == CMD_STOP) {
-                    motion_stop();
-                    Serial.println("[MOTOR] STOP (Emergency stop active)");
-                } else {
-                    Serial.println("[MOTOR] Command blocked - Emergency stop active!");
-                }
+                // Semaphore not available (shouldn't happen if flag check passed)
+                // This is a secondary safety - block command execution
+                Serial.println("[MOTOR] Warning: Safety semaphore unavailable - Command blocked");
+                motion_stop();  // Safety: stop motors
             }
         }
         

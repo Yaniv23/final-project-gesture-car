@@ -48,6 +48,7 @@ void task_sensor_fusion(void *pvParameters) {
         // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM)
         if (ultrasonic.isObstacle(EMERGENCY_STOP_DISTANCE_CM)) {
             Serial.println("⚠️ Object detected close!");
+            motion_stop();             // Immediately stop motors
             emergency_stop_trigger();  // Trigger emergency stop
         }
         
