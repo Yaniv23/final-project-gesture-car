@@ -37,7 +37,6 @@ void motion_forward() {
         return;
     }
     
-    // All wheels forward (matching Forward() from Vehicule_Controller.ino)
     // Forward_FR(), Forward_FL(), Forward_BR(), Forward_BL()
     int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);

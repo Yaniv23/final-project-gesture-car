@@ -93,4 +93,4 @@ void motion_pivot_left();
  */
 void motion_pivot_right();
 
-#endif // MOTION_CONTROL_H
+#endif
