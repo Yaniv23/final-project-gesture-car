@@ -10,21 +10,46 @@
 
 // Static MotorDriver pointer
 static MotorDriver* motor_driver_ = nullptr;
+static bool error_logged_ = false;  // Prevent error spam
+
+// Helper function to check initialization
+static bool checkInitialized() {
+    if (motor_driver_ == nullptr) {
+        if (!error_logged_) {
+            Serial.println("[ERROR] MotionControl: Not initialized");
+            error_logged_ = true;
+        }
+        return false;
+    }
+    if (!motor_driver_->isInitialized()) {
+        if (!error_logged_) {
+            Serial.println("[ERROR] MotionControl: MotorDriver not initialized");
+            error_logged_ = true;
+        }
+        return false;
+    }
+    error_logged_ = false;  // Reset flag on success
+    return true;
+}
 
 // Convert speed from 0-255 range to 0-1023 range for MotorDriver
 // MotorDriver uses -1023 to +1023, so we scale MOTOR_SPEED_SLOW (150) accordingly
 static int16_t getMotorSpeed() {
     // Convert MOTOR_SPEED_SLOW (0-255) to MotorDriver range (0-1023)
-    // Formula: (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / 255
-    return (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / 255;
+    // Formula: (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT
+    return (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT;
 }
 
 void motion_init(MotorDriver* motor_driver) {
+    if (motor_driver == nullptr) {
+        Serial.println("[ERROR] MotionControl: motor_driver is null");
+        return;
+    }
     motor_driver_ = motor_driver;
 }
 
 void motion_stop() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -33,7 +58,7 @@ void motion_stop() {
 }
 
 void motion_forward() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -48,7 +73,7 @@ void motion_forward() {
 }
 
 void motion_backward() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -64,7 +89,7 @@ void motion_backward() {
 }
 
 void motion_strafe_left() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -96,7 +121,7 @@ void motion_strafe_right() {
 }
 
 void motion_rotate_cw() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
@@ -128,61 +153,69 @@ void motion_rotate_ccw() {
 }
 
 void motion_diagonal_forward_left() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
     // Diagonal forward left (matching diagonal_forward_left() from Vehicule_Controller.ino)
     // FR: Forward, BL: Forward (others stopped)
     int16_t speed = getMotorSpeed();
-    motor_driver_->stopAll();  // Stop all first (matching original: stop_motors())
+    // Set directions first (don't call stopAll - it sets PWM to 0)
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);  // Stop
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);   // Stop
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
     // Set common PWM speed for all motors
     motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_diagonal_forward_right() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
     // Diagonal forward right (matching diagonal_forward_right() from Vehicule_Controller.ino)
     // FL: Forward, BR: Forward (others stopped)
     int16_t speed = getMotorSpeed();
-    motor_driver_->stopAll();  // Stop all first
+    // Set directions first (don't call stopAll - it sets PWM to 0)
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);  // Stop
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);   // Stop
     // Set common PWM speed for all motors
     motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_diagonal_backward_left() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
     // Diagonal backward left (matching diagonal_backward_left() from Vehicule_Controller.ino)
     // FR: Backward, BL: Backward (others stopped)
     int16_t speed = -getMotorSpeed();  // Negative for backward
-    motor_driver_->stopAll();  // Stop all first
+    // Set directions first (don't call stopAll - it sets PWM to 0)
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);  // Stop
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);   // Stop
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
     // Set common PWM speed for all motors (use absolute value)
     motor_driver_->setCommonPWM((uint16_t)(-speed));
 }
 
 void motion_diagonal_backward_right() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
     // Diagonal backward right (matching diagonal_backward_right() from Vehicule_Controller.ino)
     // FL: Backward, BR: Backward (others stopped)
     int16_t speed = -getMotorSpeed();  // Negative for backward
-    motor_driver_->stopAll();  // Stop all first
+    // Set directions first (don't call stopAll - it sets PWM to 0)
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);  // Stop
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);   // Stop
     // Set common PWM speed for all motors (use absolute value)
     motor_driver_->setCommonPWM((uint16_t)(-speed));
 }
@@ -195,24 +228,28 @@ void motion_pivot_left() {
     // Pivot left (matching pivot_left() from Vehicule_Controller.ino)
     // FR: Forward, FL: Backward (others stopped)
     int16_t speed = getMotorSpeed();
-    motor_driver_->stopAll();  // Stop all first (matching original: stop_motors())
+    // Set directions first (don't call stopAll - it sets PWM to 0)
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);  // Stop
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);  // Stop
     // Set common PWM speed for all motors
     motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_pivot_right() {
-    if (motor_driver_ == nullptr || !motor_driver_->isInitialized()) {
+    if (!checkInitialized()) {
         return;
     }
     
     // Pivot right (matching pivot_right() from Vehicule_Controller.ino)
     // FR: Backward, FL: Forward (others stopped)
     int16_t speed = getMotorSpeed();
-    motor_driver_->stopAll();  // Stop all first
+    // Set directions first (don't call stopAll - it sets PWM to 0)
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);  // Stop
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);  // Stop
     // Set common PWM speed for all motors
     motor_driver_->setCommonPWM((uint16_t)speed);
 }

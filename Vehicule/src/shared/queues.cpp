@@ -4,6 +4,7 @@
  */
 
 #include "queues.h"
+#include <Arduino.h>
 
 // Queue: ESP-NOW ISR → Communication Task
 QueueHandle_t xESPNowQueue = NULL;
@@ -25,6 +26,7 @@ bool initSharedQueues() {
     // Queue size: 5 commands
     xESPNowQueue = xQueueCreate(5, sizeof(uint8_t));
     if (xESPNowQueue == NULL) {
+        Serial.println("[ERROR] Queues: Failed to create xESPNowQueue");
         return false;
     }
     
@@ -32,13 +34,16 @@ bool initSharedQueues() {
     // Queue size: 5 commands, holds uint8_t command bytes
     xCommandQueue = xQueueCreate(5, sizeof(uint8_t));
     if (xCommandQueue == NULL) {
+        Serial.println("[ERROR] Queues: Failed to create xCommandQueue");
         return false;
     }
 
-    // Create motion command queue (holds BodyVelocity) - legacy, may not be used
+    // Create motion command queue (holds BodyVelocity) - reserved for future use
     // Queue size: 5 commands, each is sizeof(BodyVelocity) = 12 bytes
+    // NOTE: Currently unused - reserved for future kinematics/velocity control implementation
     xMotionCommandQueue = xQueueCreate(5, sizeof(BodyVelocity));
     if (xMotionCommandQueue == NULL) {
+        Serial.println("[ERROR] Queues: Failed to create xMotionCommandQueue");
         return false;
     }
 
@@ -46,6 +51,7 @@ bool initSharedQueues() {
     // Queue size: 3 status updates
     xMotorStatusQueue = xQueueCreate(3, sizeof(WheelVelocities));
     if (xMotorStatusQueue == NULL) {
+        Serial.println("[ERROR] Queues: Failed to create xMotorStatusQueue");
         return false;
     }
 
@@ -53,6 +59,7 @@ bool initSharedQueues() {
     // Initially given (safe to move)
     xSafetySemaphore = xSemaphoreCreateBinary();
     if (xSafetySemaphore == NULL) {
+        Serial.println("[ERROR] Queues: Failed to create xSafetySemaphore");
         return false;
     }
     

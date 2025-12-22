@@ -17,7 +17,7 @@
 extern MotorDriver motor_driver;
 
 void task_motor_control(void *pvParameters) {
-    const TickType_t period = pdMS_TO_TICKS(50);  // 50ms period
+    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     Serial.println("[TASK_MOTOR] Motor control task started");
@@ -30,8 +30,15 @@ void task_motor_control(void *pvParameters) {
     while (1) {
         // Try to get command from queue
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(100))) {
-            // Execute command based on byte value
-            switch (cmd_byte) {
+            // Check safety semaphore before executing commands
+            // Semaphore is given initially (safe state)
+            // Emergency stop TAKES semaphore (makes it unavailable = unsafe)
+            // If we CAN take semaphore, system is safe
+            if (xSafetySemaphore != NULL && 
+                xSemaphoreTake(xSafetySemaphore, 0) == pdTRUE) {
+                // System is safe - execute command
+                // Execute command based on byte value
+                switch (cmd_byte) {
                 case CMD_STOP:
                     motion_stop();
                     Serial.println("[MOTOR] STOP");
@@ -89,6 +96,18 @@ void task_motor_control(void *pvParameters) {
                     Serial.println(cmd_byte, HEX);
                     motion_stop();  // Safety: stop on unknown command
                     break;
+                }
+                
+                // Return semaphore after command execution
+                xSemaphoreGive(xSafetySemaphore);
+            } else {
+                // Emergency stop active (semaphore not available) - only allow STOP command
+                if (cmd_byte == CMD_STOP) {
+                    motion_stop();
+                    Serial.println("[MOTOR] STOP (Emergency stop active)");
+                } else {
+                    Serial.println("[MOTOR] Command blocked - Emergency stop active!");
+                }
             }
         }
         

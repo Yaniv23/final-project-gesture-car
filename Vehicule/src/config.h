@@ -37,7 +37,8 @@
 // ============================================================================
 #define MOTOR_SPEED_SLOW   150  // Slow speed (0-255)
 #define MOTOR_SPEED_FAST   255  // Fast speed (0-255)
-#define MOTOR_PWM_MAX      1023 // Maximum PWM value for HAL
+#define MOTOR_SPEED_MAX_8BIT 255  // Maximum value for 8-bit speed range
+#define MOTOR_PWM_MAX      1023 // Maximum PWM value for MotorDriver (10-bit)
 
 // ============================================================================
 // FreeRTOS Task Priorities

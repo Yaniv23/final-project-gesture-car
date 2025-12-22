@@ -4,6 +4,7 @@
  */
 
 #include "motor_driver.h"
+#include <Arduino.h>
 
 MotorDriver::MotorDriver() : initialized_(false), common_pwm_pin_(0), common_ledc_channel_(0) {
     // Initialize all motor configs to invalid values
@@ -14,6 +15,25 @@ MotorDriver::MotorDriver() : initialized_(false), common_pwm_pin_(0), common_led
 }
 
 bool MotorDriver::init(const MotorConfig motors[4], uint8_t common_pwm_pin, uint8_t ledc_channel) {
+    // Validate inputs
+    if (common_pwm_pin == 0) {
+        Serial.println("[ERROR] MotorDriver: Invalid common_pwm_pin (must be > 0)");
+        return false;
+    }
+    if (ledc_channel > 15) {
+        Serial.println("[ERROR] MotorDriver: Invalid ledc_channel (must be 0-15)");
+        return false;
+    }
+    
+    // Validate motor pins
+    for (int i = 0; i < 4; i++) {
+        if (motors[i].in1_pin == 0 || motors[i].in2_pin == 0) {
+            Serial.print("[ERROR] MotorDriver: Invalid pin configuration for motor ");
+            Serial.println(i);
+            return false;
+        }
+    }
+    
     // Copy motor configurations (direction pins only)
     for (int i = 0; i < 4; i++) {
         motor_configs_[i] = motors[i];
@@ -47,7 +67,12 @@ bool MotorDriver::init(const MotorConfig motors[4], uint8_t common_pwm_pin, uint
 }
 
 void MotorDriver::setMotorSpeed(uint8_t motor_id, int16_t speed) {
-    if (!initialized_ || motor_id >= 4) {
+    if (!initialized_) {
+        Serial.println("[ERROR] MotorDriver: Not initialized");
+        return;
+    }
+    if (motor_id >= 4) {
+        Serial.println("[ERROR] MotorDriver: Invalid motor_id");
         return;
     }
 
@@ -60,6 +85,9 @@ void MotorDriver::setMotorSpeed(uint8_t motor_id, int16_t speed) {
         setDirection(motor_id, true);  // Forward
     } else if (speed < 0) {
         setDirection(motor_id, false); // Reverse
+    } else {
+        // Speed is 0 - set direction to forward (maintains consistent state)
+        setDirection(motor_id, true);
     }
     // Note: Speed magnitude is controlled by common PWM pin
     // The common PWM is set separately to control all motors' speed simultaneously
@@ -90,6 +118,7 @@ void MotorDriver::setDirection(uint8_t motor_id, bool forward) {
 
 void MotorDriver::setCommonPWM(uint16_t duty) {
     if (!initialized_) {
+        Serial.println("[ERROR] MotorDriver: Not initialized");
         return;
     }
 

@@ -67,7 +67,7 @@ bool espnow_init() {
     
     // Initialize ESP-NOW
     if (esp_now_init() != ESP_OK) {
-        Serial.println("❌ ESP-NOW init failed");
+        Serial.println("[ERROR] ESP-NOW: Initialization failed");
         return false;
     }
     
