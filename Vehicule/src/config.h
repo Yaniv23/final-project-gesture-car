@@ -6,25 +6,24 @@
 // ============================================================================
 // Based on existing Vehicule_Controller.ino pin assignments
 
+// Common PWM pin for all motors (controls speed of all motors simultaneously)
+#define MOTOR_PWM_COMMON   34  // Common PWM enable pin for all 4 motors
+
 // Front Right Motor (L298N Driver #1)
 #define FRONT_RIGHT_IN1    35
 #define FRONT_RIGHT_IN2    32
-#define FRONT_RIGHT_ENA    34  // PWM channel
 
 // Front Left Motor (L298N Driver #1)
 #define FRONT_LEFT_IN3     33
 #define FRONT_LEFT_IN4     25
-#define FRONT_LEFT_ENA     34  // Shared PWM with FR
 
 // Back Right Motor (L298N Driver #2)
 #define BACK_RIGHT_IN1     27
 #define BACK_RIGHT_IN2     14
-#define BACK_RIGHT_ENA     26  // PWM channel
 
 // Back Left Motor (L298N Driver #2)
 #define BACK_LEFT_IN3      12
 #define BACK_LEFT_IN4      13
-#define BACK_LEFT_ENA      26  // Shared PWM with BR
 
 // Servo Motor (for scanning)
 #define SERVO_PIN          4
@@ -76,14 +75,13 @@
 #define SERIAL_BAUD_RATE           115200
 #define ESP_NOW_CHANNEL            0
 #define PROTOCOL_TIMEOUT_MS        500
-#define COMMAND_TIMEOUT_MS         500
+#define COMMAND_TIMEOUT_MS         500   // Auto-stop if no command received
 
 // ============================================================================
 // Safety Settings
 // ============================================================================
 #define WATCHDOG_TIMEOUT_MS        5000   // 5 second watchdog
 #define EMERGENCY_STOP_DISTANCE_CM 10    // Stop if obstacle < 10cm
-#define COMMAND_TIMEOUT_MS         500   // Auto-stop if no command
 
 // ============================================================================
 // Kinematic Parameters (shared with Person 2)
