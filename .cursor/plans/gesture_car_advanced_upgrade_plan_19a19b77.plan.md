@@ -46,7 +46,7 @@ todos:
 
 ### Target Architecture
 
-```
+```javascript
 ┌─────────────────────────────────────────────────────────────┐
 │                    PERCEPTION LAYER                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -125,6 +125,8 @@ todos:
 └─────────────────────────────────────────────────────────────┘
 ```
 
+
+
 ### Data Flow & Timing Constraints
 
 **Critical Paths:**
@@ -149,7 +151,7 @@ todos:
 
 **File Structure:**
 
-```
+```javascript
 Vehicule_Controller/
 ├── src/
 │   ├── main.cpp                    # Entry point, FreeRTOS init
@@ -242,7 +244,7 @@ public:
 
 **Packet Structure:**
 
-```
+```javascript
 ┌──────┬──────┬──────┬──────────┬──────────┬──────┬──────┐
 │ SOF  │ VER  │ CMD  │ SEQ      │ LEN      │ DATA │ CRC  │
 │ 0xAA │ 0x01 │ 0xXX │ 0xXXXX   │ 0xXX     │ ...  │ 0xXX │
@@ -267,9 +269,7 @@ public:
 - Version negotiation on startup
 - Timeout handling (500ms default)
 
-**File:** `communication/protocol_binary.cpp`
-
-**Engineering Value:**
+**File:** `communication/protocol_binary.cpp`**Engineering Value:**
 
 - Demonstrates protocol design and error handling
 - Shows understanding of communication reliability
@@ -284,9 +284,7 @@ public:
 - RSSI monitoring for link quality
 - Automatic reconnection logic
 
-**File:** `communication/espnow_handler.cpp`
-
----
+**File:** `communication/espnow_handler.cpp`---
 
 ## Phase 3: Control & Robotics Layer
 
@@ -294,14 +292,14 @@ public:
 
 **Forward Kinematics:**
 
-```
+```javascript
 Given: wheel velocities [ω_FL, ω_FR, ω_BL, ω_BR]
 Compute: body velocities [vx, vy, ω]
 ```
 
 **Inverse Kinematics:**
 
-```
+```javascript
 Given: desired [vx, vy, ω]
 Compute: wheel velocities [ω_FL, ω_FR, ω_BL, ω_BR]
 ```
@@ -327,9 +325,7 @@ WheelVelocities inverseKinematics(BodyVelocity body, float wheel_radius, float w
 BodyVelocity forwardKinematics(WheelVelocities wheels, float wheel_radius, float wheel_base, float track_width);
 ```
 
-**File:** `control/mecanum_kinematics.cpp`
-
-**Engineering Value:**
+**File:** `control/mecanum_kinematics.cpp`**Engineering Value:**
 
 - Demonstrates robotics kinematics understanding
 - Shows mathematical modeling skills
@@ -365,9 +361,7 @@ public:
 - **Option B**: Estimate from motor current (current sensing IC)
 - **Option C**: Model-based estimation (PWM → velocity mapping with calibration)
 
-**File:** `control/pid_controller.cpp`, `tasks/task_motor_control.cpp`
-
-**Engineering Value:**
+**File:** `control/pid_controller.cpp`, `tasks/task_motor_control.cpp`**Engineering Value:**
 
 - Demonstrates closed-loop control systems
 - Shows PID tuning and control theory
@@ -395,9 +389,7 @@ public:
 };
 ```
 
-**File:** `control/motion_planner.cpp`
-
-**Engineering Value:**
+**File:** `control/motion_planner.cpp`**Engineering Value:**
 
 - Demonstrates motion planning and trajectory generation
 - Shows abstraction of complex behaviors
@@ -409,17 +401,13 @@ public:
 
 ### 4.1 IMU Integration
 
-**Hardware:** MPU6050 or BNO055 (I2C)
-
-**Features:**
+**Hardware:** MPU6050 or BNO055 (I2C)**Features:**
 
 - Orientation estimation (roll, pitch, yaw)
 - Angular velocity for odometry
 - Complementary filter or Kalman filter for sensor fusion
 
-**File:** `drivers/imu_driver.cpp`, `control/sensor_fusion.cpp`
-
-**Engineering Value:**
+**File:** `drivers/imu_driver.cpp`, `control/sensor_fusion.cpp`**Engineering Value:**
 
 - Demonstrates sensor fusion and filtering
 - Shows understanding of IMU data processing
@@ -447,9 +435,7 @@ struct ObstacleMap {
 ObstacleMap fuseSensors(ultrasonic_data, imu_data, vision_data);
 ```
 
-**File:** `control/sensor_fusion.cpp`, `tasks/task_sensor_fusion.cpp`
-
-**Engineering Value:**
+**File:** `control/sensor_fusion.cpp`, `tasks/task_sensor_fusion.cpp`**Engineering Value:**
 
 - Demonstrates multi-sensor data fusion
 - Shows confidence scoring and uncertainty handling
@@ -463,9 +449,7 @@ ObstacleMap fuseSensors(ultrasonic_data, imu_data, vision_data);
 - Temporal filtering (moving average)
 - Fallback to "Stop" if confidence < threshold
 
-**File:** `Hand_Tracking/Hand_Tracker.py` (enhance existing)
-
-**Engineering Value:**
+**File:** `Hand_Tracking/Hand_Tracker.py` (enhance existing)**Engineering Value:**
 
 - Demonstrates robustness in perception systems
 - Shows handling of uncertain inputs
@@ -493,9 +477,7 @@ public:
 };
 ```
 
-**File:** `safety/watchdog.cpp`, `tasks/task_safety_monitor.cpp`
-
-**Engineering Value:**
+**File:** `safety/watchdog.cpp`, `tasks/task_safety_monitor.cpp`**Engineering Value:**
 
 - Demonstrates fault tolerance and system reliability
 - Shows understanding of watchdog patterns
@@ -517,9 +499,7 @@ public:
 - Flash status LED
 - Log event
 
-**File:** `safety/emergency_stop.cpp`
-
-**Engineering Value:**
+**File:** `safety/emergency_stop.cpp`**Engineering Value:**
 
 - Demonstrates safety-critical system design
 - Shows fail-safe mechanisms
@@ -538,9 +518,7 @@ public:
 - Exponential backoff
 - Fallback to safe state
 
-**File:** `safety/timeout_monitor.cpp`, `communication/espnow_handler.cpp`
-
----
+**File:** `safety/timeout_monitor.cpp`, `communication/espnow_handler.cpp`---
 
 ## Phase 6: Autonomous & Hybrid Modes
 
@@ -560,9 +538,7 @@ public:
 - Any → Emergency Stop (safety trigger)
 - Calibration (special command)
 
-**File:** `control/state_machine.cpp`
-
-**Engineering Value:**
+**File:** `control/state_machine.cpp`**Engineering Value:**
 
 - Demonstrates state machine design
 - Shows mode management and transitions
@@ -575,15 +551,13 @@ public:
 1. Read sensor fusion output
 2. If obstacle detected:
 
-   - Stop forward motion
-   - Rotate to find clear path
-   - Resume motion
+- Stop forward motion
+- Rotate to find clear path
+- Resume motion
 
 3. If no obstacle: continue current trajectory
 
-**File:** `control/obstacle_avoidance.cpp`
-
-**Engineering Value:**
+**File:** `control/obstacle_avoidance.cpp`**Engineering Value:**
 
 - Demonstrates reactive navigation
 - Shows integration of perception and control
@@ -597,9 +571,7 @@ public:
 - Encoder calibration (if added)
 - Kinematic parameter tuning (wheel radius, base, track)
 
-**File:** `control/calibration.cpp`
-
-**Engineering Value:**
+**File:** `control/calibration.cpp`**Engineering Value:**
 
 - Demonstrates system calibration and parameter tuning
 - Shows understanding of manufacturing variations
@@ -629,7 +601,7 @@ public:
 
 **File Structure:**
 
-```
+```javascript
 tests/
 ├── unit/
 │   ├── test_kinematics.cpp
@@ -655,9 +627,7 @@ tests/
 - Log motor outputs and sensor inputs
 - Validate timing and correctness
 
-**File:** `tests/integration/test_hil.py`
-
-**Engineering Value:**
+**File:** `tests/integration/test_hil.py`**Engineering Value:**
 
 - Demonstrates HIL testing methodology
 - Shows validation of real-time constraints
@@ -672,9 +642,7 @@ tests/
 - Motor response time (step input)
 - FPS of camera stream
 
-**File:** `utils/performance_monitor.cpp`
-
-**Engineering Value:**
+**File:** `utils/performance_monitor.cpp`**Engineering Value:**
 
 - Demonstrates performance analysis
 - Shows quantitative validation
@@ -751,13 +719,7 @@ tests/
 
 ### Quick Reference Summary
 
-| Person | Role | Primary Focus | Key Deliverables | Timeline |
-
-|--------|------|--------------|------------------|----------|
-
-| **Person 1** | Infrastructure/Embedded | FreeRTOS, HAL, Communication | HAL layer, MotorDriver, Binary protocol, ESP-NOW | Days 1-10 |
-
-| **Person 2** | Control/Robotics | Control Algorithms, Kinematics | Kinematics, PID, Motor control task, Motion primitives | Days 1-10 |
+| Person | Role | Primary Focus | Key Deliverables | Timeline ||--------|------|--------------|------------------|----------|| **Person 1** | Infrastructure/Embedded | FreeRTOS, HAL, Communication | HAL layer, MotorDriver, Binary protocol, ESP-NOW | Days 1-10 || **Person 2** | Control/Robotics | Control Algorithms, Kinematics | Kinematics, PID, Motor control task, Motion primitives | Days 1-10 |
 
 ### Overview
 
@@ -775,21 +737,7 @@ tests/
 
 ### Critical Coordination Points
 
-| Day | Event | Person 1 Action | Person 2 Action | Deliverable |
-
-|-----|-------|-----------------|-----------------|-------------|
-
-| **Day 1** | Joint Session (2 hours) | Define HAL interfaces | Review kinematics requirements | Shared interface headers |
-
-| **Day 3** | Interface Handoff | Deliver HAL `.h` files | Start kinematics (no dependencies) | `hal_pwm.h`, `hal_gpio.h` |
-
-| **Day 4** | MotorDriver Ready | Deliver MotorDriver interface | Design PID interface | `motor_driver.h` |
-
-| **Day 5** | Mock Integration | Provide mock HAL for testing | Test control algorithms with mocks | Mock implementations |
-
-| **Day 8** | Integration Start | Ready for Person 2's code | Connect control to infrastructure | Integration branch |
-
-| **Day 10** | Final Integration | Joint debugging & testing | Joint debugging & testing | Working end-to-end system |
+| Day | Event | Person 1 Action | Person 2 Action | Deliverable ||-----|-------|-----------------|-----------------|-------------|| **Day 1** | Joint Session (2 hours) | Define HAL interfaces | Review kinematics requirements | Shared interface headers || **Day 3** | Interface Handoff | Deliver HAL `.h` files | Start kinematics (no dependencies) | `hal_pwm.h`, `hal_gpio.h` || **Day 4** | MotorDriver Ready | Deliver MotorDriver interface | Design PID interface | `motor_driver.h` || **Day 5** | Mock Integration | Provide mock HAL for testing | Test control algorithms with mocks | Mock implementations || **Day 8** | Integration Start | Ready for Person 2's code | Connect control to infrastructure | Integration branch || **Day 10** | Final Integration | Joint debugging & testing | Joint debugging & testing | Working end-to-end system |
 
 ### Parallel Work Opportunities
 
@@ -812,26 +760,32 @@ tests/
 
 1. **Set up PlatformIO project** (Task 1.1)
    ```bash
-   cd Vehicule_Controller
-   pio project init --board esp32dev
+         cd Vehicule_Controller
+         pio project init --board esp32dev
    ```
+
+
+
 
 2. **Create directory structure**
    ```bash
-   mkdir -p src/{hal,drivers,tasks,communication,utils,shared}
-   mkdir -p tests/unit
+         mkdir -p src/{hal,drivers,tasks,communication,utils,shared}
+         mkdir -p tests/unit
    ```
+
+
+
 
 3. **Start with HAL_PWM** (Task 1.2)
 
-   - Create abstract interface first
-   - Then ESP32 implementation
-   - Test with LED blink
+- Create abstract interface first
+- Then ESP32 implementation
+- Test with LED blink
 
 4. **Share interfaces early** (Day 3)
 
-   - Commit HAL headers to shared branch
-   - Person 2 needs these to start
+- Commit HAL headers to shared branch
+- Person 2 needs these to start
 
 **Key Files You Own:**
 
@@ -856,27 +810,30 @@ tests/
 
 1. **Set up unit testing framework** (can do immediately)
    ```bash
-   # Add Unity testing framework to PlatformIO
-   # Or use Google Test on PC for kinematics tests
+         # Add Unity testing framework to PlatformIO
+         # Or use Google Test on PC for kinematics tests
    ```
+
+
+
 
 2. **Start with kinematics** (Task 2.1)
 
-   - Pure math, no dependencies
-   - Write forward/inverse functions
-   - Create unit tests
-   - Validate with known test cases
+- Pure math, no dependencies
+- Write forward/inverse functions
+- Create unit tests
+- Validate with known test cases
 
 3. **Design PID controller** (Task 2.2)
 
-   - Can start immediately
-   - Write unit tests
-   - Test step response on PC
+- Can start immediately
+- Write unit tests
+- Test step response on PC
 
 4. **Wait for Person 1's interfaces** (Day 3-4)
 
-   - Once HAL headers available, create mocks
-   - Test your control code with mocks
+- Once HAL headers available, create mocks
+- Test your control code with mocks
 
 **Key Files You Own:**
 
@@ -908,7 +865,7 @@ tests/
 
 **Files to Create:**
 
-```
+```javascript
 Vehicule_Controller/
 ├── platformio.ini
 ├── src/
@@ -1019,11 +976,11 @@ public:
 
 - Main task creation in `main.cpp`
 - Task skeletons for:
-  - `task_motor_control` (10ms period, priority 4)
-  - `task_sensor_fusion` (50ms period, priority 3)
-  - `task_communication` (100ms period, priority 2)
-  - `task_safety_monitor` (50ms period, priority 5)
-  - `task_telemetry` (100ms period, priority 1)
+- `task_motor_control` (10ms period, priority 4)
+- `task_sensor_fusion` (50ms period, priority 3)
+- `task_communication` (100ms period, priority 2)
+- `task_safety_monitor` (50ms period, priority 5)
+- `task_telemetry` (100ms period, priority 1)
 
 **Files:**
 
@@ -1196,7 +1153,7 @@ BodyVelocity forwardKinematics(const WheelVelocities& wheels,
 
 **Mathematical Model:**
 
-```
+```javascript
 For mecanum wheels:
 v_FL = vx - vy - ω*(L+W)/2
 v_FR = vx + vy + ω*(L+W)/2
@@ -1252,7 +1209,7 @@ public:
 
 **PID Algorithm:**
 
-```
+```javascript
 error = setpoint - feedback
 integral += error * dt
 derivative = (error - prev_error) / dt
@@ -1491,6 +1448,8 @@ enum MotorID {
 #define SENSOR_FUSION_PERIOD_MS  50   // 20 Hz
 ```
 
+
+
 ### Coordination & Integration Plan
 
 #### Day 1: Joint Session (2 hours) - REQUIRED
@@ -1499,37 +1458,37 @@ enum MotorID {
 
 1. **Review Architecture** (30 min)
 
-   - Walk through system diagram
-   - Understand data flow
-   - Identify integration points
+- Walk through system diagram
+- Understand data flow
+- Identify integration points
 
 2. **Define Shared Interfaces** (45 min)
 
-   - Create `src/shared/types.h` together
-   - Agree on data structure formats
-   - Define motor IDs and constants
+- Create `src/shared/types.h` together
+- Agree on data structure formats
+- Define motor IDs and constants
 
 3. **Coding Standards** (15 min)
 
-   - Naming conventions (camelCase vs snake_case)
-   - Code formatting (clang-format config)
-   - Comment style
+- Naming conventions (camelCase vs snake_case)
+- Code formatting (clang-format config)
+- Comment style
 
 4. **Git Workflow** (15 min)
 
-   - Branch strategy:
-     - `main` - stable code
-     - `person1/infrastructure` - Person 1's work
-     - `person2/control` - Person 2's work
-     - `integration/phase1-2` - integration branch
-   - Merge process (PRs or direct merge)
-   - Commit message format
+- Branch strategy:
+    - `main` - stable code
+    - `person1/infrastructure` - Person 1's work
+    - `person2/control` - Person 2's work
+    - `integration/phase1-2` - integration branch
+- Merge process (PRs or direct merge)
+- Commit message format
 
 5. **Integration Points** (15 min)
 
-   - How Person 2 will use Person 1's MotorDriver
-   - How Person 1 will receive Person 2's setpoints
-   - Shared memory/queue structure for communication
+- How Person 2 will use Person 1's MotorDriver
+- How Person 1 will receive Person 2's setpoints
+- Shared memory/queue structure for communication
 
 **Deliverables from Joint Session:**
 
@@ -1597,7 +1556,7 @@ extern SemaphoreHandle_t xSafetySemaphore;  // Take = safe to move, Give = emerg
 
 **Data Flow:**
 
-```
+```javascript
 Person 1 (Communication Task)
     ↓ [BodyVelocity via xMotionCommandQueue]
 Person 2 (Motor Control Task)
@@ -1605,9 +1564,11 @@ Person 2 (Motor Control Task)
 Person 1 (MotorDriver → Hardware)
 ```
 
+
+
 ### Dependency Diagram
 
-```
+```javascript
 Person 1 Tasks:
 ┌─────────────────┐
 │  Communication  │──┐
@@ -1647,21 +1608,19 @@ Person 2 Tasks:
 
 1. **Person 1 → Person 2**: 
 
-   - `MotorDriver` interface (Person 2 calls `setMotorSpeed()`)
-   - `xMotionCommandQueue` (Person 2 reads `BodyVelocity`)
+- `MotorDriver` interface (Person 2 calls `setMotorSpeed()`)
+- `xMotionCommandQueue` (Person 2 reads `BodyVelocity`)
 
 2. **Person 2 → Person 1**:
 
-   - `BodyVelocity` setpoint (Person 2 calculates, Person 1 receives via queue)
-   - Motor status (optional, for telemetry)
+- `BodyVelocity` setpoint (Person 2 calculates, Person 1 receives via queue)
+- Motor status (optional, for telemetry)
 
 ---
 
 ### Deliverables Checklist
 
-**Person 1 (Infrastructure) - Detailed Checklist:**
-
-**Week 1 (Days 1-5):**
+**Person 1 (Infrastructure) - Detailed Checklist:Week 1 (Days 1-5):**
 
 - [ ] Day 1: Project structure setup (PlatformIO, directories)
 - [ ] Day 1: Joint session - define shared interfaces
@@ -1682,9 +1641,7 @@ Person 2 Tasks:
 - [ ] Day 9-10: Full integration, debugging, testing
 - [ ] Day 10: End-to-end test passes
 
-**Person 2 (Control) - Detailed Checklist:**
-
-**Week 1 (Days 1-5):**
+**Person 2 (Control) - Detailed Checklist:Week 1 (Days 1-5):**
 
 - [ ] Day 1: Joint session - review shared interfaces
 - [ ] Day 1-3: Mecanum kinematics library (forward/inverse)
@@ -1753,9 +1710,7 @@ Person 2 Tasks:
 - Additional ultrasonic sensors (side-facing)
 - Status LEDs for debugging
 
-**Total Additional Cost:** ~$25-65
-
----
+**Total Additional Cost:** ~$25-65---
 
 ## Success Metrics
 
@@ -1783,6 +1738,3 @@ Person 2 Tasks:
 4. **Robotics**: Mecanum kinematics, motion planning, sensor fusion
 5. **Software Architecture**: Layered design, HAL, modularity
 6. **Safety Engineering**: Watchdog, E-stop, fault tolerance
-7. **Testing**: Unit tests, HIL, performance validation
-
-This upgrade plan transforms your functional project into a comprehensive embedded systems portfolio piece that demonstrates senior-level engineering thinking across multiple domains.
