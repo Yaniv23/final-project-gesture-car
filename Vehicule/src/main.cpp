@@ -1,0 +1,167 @@
+/**
+ * @file main.cpp
+ * @brief Main entry point for ESP32 Vehicle Controller
+ * @details FreeRTOS-based multi-task system for gesture-controlled mecanum car
+ */
+
+#include <Arduino.h>
+#include <FreeRTOS.h>
+#include <task.h>
+
+// Configuration
+#include "config.h"
+
+// Drivers
+#include "drivers/motor_driver.h"
+
+// Shared resources
+#include "shared/queues.h"
+
+// Safety
+#include "safety/watchdog.h"
+#include "safety/timeout_monitor.h"
+#include "safety/emergency_stop.h"
+
+// Task implementations (forward declarations)
+void task_motor_control(void *pvParameters);
+void task_communication(void *pvParameters);
+void task_sensor_fusion(void *pvParameters);
+void task_safety_monitor(void *pvParameters);
+void task_telemetry(void *pvParameters);
+
+// Global motor driver instance
+MotorDriver motor_driver;
+
+void setup() {
+    // Initialize Serial for debugging
+    Serial.begin(SERIAL_BAUD_RATE);
+    HAL_Timer_DelayMs(1000);  // Wait for Serial Monitor to connect
+    
+    Serial.println("\n========================================");
+    Serial.println("Gesture Car - ESP32 Vehicle Controller");
+    Serial.println("Phase 1: Infrastructure Setup");
+    Serial.println("========================================");
+    Serial.println("FreeRTOS Version: " + String(tskKERNEL_VERSION_NUMBER));
+    Serial.println("CPU Frequency: " + String(getCpuFrequencyMhz()) + " MHz");
+    Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
+    Serial.println("========================================\n");
+    
+    // Initialize shared queues and semaphores
+    Serial.println("[SETUP] Initializing shared queues...");
+    if (!initSharedQueues()) {
+        Serial.println("[ERROR] Failed to initialize shared queues!");
+        while (1) delay(1000);  // Halt on error
+    }
+    Serial.println("[SETUP] Shared queues initialized");
+    
+    // Initialize MotorDriver with common PWM pin
+    Serial.println("[SETUP] Initializing MotorDriver...");
+    MotorDriver::MotorConfig motor_configs[4] = {
+        // Front Left Motor (direction pins only)
+        {FRONT_LEFT_IN3, FRONT_LEFT_IN4},
+        // Front Right Motor
+        {FRONT_RIGHT_IN1, FRONT_RIGHT_IN2},
+        // Back Left Motor
+        {BACK_LEFT_IN3, BACK_LEFT_IN4},
+        // Back Right Motor
+        {BACK_RIGHT_IN1, BACK_RIGHT_IN2}
+    };
+    
+    // Initialize with common PWM pin (pin 34) and LEDC channel 0
+    if (!motor_driver.init(motor_configs, MOTOR_PWM_COMMON, 0)) {
+        Serial.println("[ERROR] Failed to initialize MotorDriver!");
+        while (1) delay(1000);  // Halt on error
+    }
+    Serial.println("[SETUP] MotorDriver initialized (common PWM on pin " + String(MOTOR_PWM_COMMON) + ")");
+    
+    // Initialize safety systems
+    Serial.println("[SETUP] Initializing safety systems...");
+    watchdog_init(WATCHDOG_TIMEOUT_MS);
+    timeout_monitor_init(COMMAND_TIMEOUT_MS);
+    emergency_stop_init();
+    Serial.println("[SETUP] Safety systems initialized");
+    
+    // Create FreeRTOS tasks
+    Serial.println("[SETUP] Creating FreeRTOS tasks...");
+    
+    // Task 1: Safety Monitor (Highest Priority - 5)
+    xTaskCreate(
+        task_safety_monitor,
+        "SafetyMonitor",
+        TASK_STACK_SIZE_SAFETY_MONITOR,
+        NULL,
+        TASK_PRIORITY_SAFETY_MONITOR,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: SafetyMonitor (Priority 5)");
+    
+    // Task 2: Motor Control (Priority 4)
+    xTaskCreate(
+        task_motor_control,
+        "MotorControl",
+        TASK_STACK_SIZE_MOTOR_CONTROL,
+        NULL,
+        TASK_PRIORITY_MOTOR_CONTROL,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: MotorControl (Priority 4)");
+    
+    // Task 3: Sensor Fusion (Priority 3)
+    xTaskCreate(
+        task_sensor_fusion,
+        "SensorFusion",
+        TASK_STACK_SIZE_SENSOR_FUSION,
+        NULL,
+        TASK_PRIORITY_SENSOR_FUSION,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: SensorFusion (Priority 3)");
+    
+    // Task 4: Communication (Priority 2)
+    xTaskCreate(
+        task_communication,
+        "Communication",
+        TASK_STACK_SIZE_COMMUNICATION,
+        NULL,
+        TASK_PRIORITY_COMMUNICATION,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: Communication (Priority 2)");
+    
+    // Task 5: Telemetry (Lowest Priority - 1)
+    xTaskCreate(
+        task_telemetry,
+        "Telemetry",
+        TASK_STACK_SIZE_TELEMETRY,
+        NULL,
+        TASK_PRIORITY_TELEMETRY,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: Telemetry (Priority 1)");
+    
+    Serial.println("\n[SETUP] All tasks created successfully!");
+    Serial.println("[SETUP] System ready - FreeRTOS scheduler starting...\n");
+}
+
+void loop() {
+    // Empty - FreeRTOS tasks handle everything
+    // In a FreeRTOS setup, loop() should not contain blocking code
+    // All work is done in tasks created in setup()
+    
+    // Feed watchdog timer (safety mechanism)
+    HAL_Timer_WatchdogFeed();
+    
+    // This delay ensures loop() doesn't consume CPU
+    // In production, you might remove loop() entirely or use it for
+    // low-priority background tasks
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Optional: Print free heap periodically for debugging
+    static uint32_t lastPrint = 0;
+    uint32_t now = HAL_Timer_GetMillis();
+    if (now - lastPrint > 5000) {
+        Serial.println("[LOOP] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
+        lastPrint = now;
+    }
+}
+
