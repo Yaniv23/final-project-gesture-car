@@ -85,7 +85,7 @@ def get_direction_label(angle_deg):
     elif 22.5 < angle_deg <= 67.5:
         return "diagonal_forward_right"
     elif 67.5 < angle_deg <= 112.5:
-        return "Up"
+        return "Forward"
     elif 112.5 < angle_deg <= 157.5:
         return "diagonal_forward_left"
     elif 157.5 < angle_deg or angle_deg <= -157.5:
@@ -93,7 +93,7 @@ def get_direction_label(angle_deg):
     elif -157.5 < angle_deg <= -112.5:
         return "diagonal_backward_left"
     elif -112.5 < angle_deg <= -67.5:
-        return "Down"
+        return "Backward"
     elif -67.5 < angle_deg <= -22.5:
         return "diagonal_backward_right"
     else:
@@ -112,16 +112,19 @@ def is_hand_closed(landmarks):
             bent_count += 1
     return bent_count == 4
 
-def is_index_finger_up(landmarks):
-    return (
-        landmarks[8].y < landmarks[6].y and
-        landmarks[12].y > landmarks[10].y and
-        landmarks[16].y > landmarks[14].y and
-        landmarks[20].y > landmarks[18].y
-    )
-
-def is_index_finger_down(landmarks):
-    return landmarks[8].y > landmarks[6].y
+def count_fingers_up(landmarks):
+    """Return the number of fingers (index, middle, ring, pinky) that are 'up'."""
+    fingers = [
+        (8, 6),   # index
+        (12, 10), # middle
+        (16, 14), # ring
+        (20, 18), # pinky
+    ]
+    count = 0
+    for tip_idx, pip_idx in fingers:
+        if landmarks[tip_idx].y < landmarks[pip_idx].y:
+            count += 1
+    return count
 
 def is_hand_open(landmarks):
     return (
@@ -132,18 +135,9 @@ def is_hand_open(landmarks):
         landmarks[20].y < landmarks[18].y
     )
 
-# === Circle Gestures ===
-def is_circle_ccw(landmarks, w, h):
-    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)  # Thumb tip
-    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)  # Index tip
-    distance = math.hypot(x2 - x1, y2 - y1)
-    return distance < 40 and x2 > x1  # Index to the right → CW (kept as-is from your code)
-
-def is_circle_cw(landmarks, w, h):
-    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)  # Thumb tip
-    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)  # Index tip
-    distance = math.hypot(x2 - x1, y2 - y1)
-    return distance < 40 and x2 < x1  # Index to the left → CCW (kept as-is from your code)
+# Circle gestures (disabled)
+# The thumb-index circle gestures were previously used to emit rotate_cw / rotate_ccw.
+# They are intentionally left out (disabled) to avoid accidental rotation triggers.
 
 # === MAIN LOOP ===
 while True:
@@ -195,20 +189,33 @@ while True:
         distance_to_center = math.hypot(dx, dy)
 
         # === GESTURE DECISION TREE ===
-        if is_index_finger_up(landmarks):
-            detected_label = "Forward"
-        elif is_hand_closed(landmarks):
+        # Priority:
+        # 1. Stop (hand closed)
+        # 2. Forward/Backward determined ONLY by hand position (angle)
+        # 3. Rotation gestures (finger counts or circle gestures)
+        # 4. Center (open hand near center)
+        # 5. Fallback to directional label
+        if is_hand_closed(landmarks):
             detected_label = "Stop"
-        elif is_circle_ccw(landmarks, w, h):
-            detected_label = "rotate_ccw"
-        elif is_circle_cw(landmarks, w, h):
-            detected_label = "rotate_cw"
-        elif is_index_finger_down(landmarks):
-            detected_label = "Backward"
-        elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-            detected_label = "Center"
         else:
-            detected_label = get_direction_label(angle_deg)
+            pos_label = get_direction_label(angle_deg)
+
+            # Forward/Backward are controlled only by hand position
+            if pos_label in ("Forward", "Backward"):
+                detected_label = pos_label
+            else:
+                # Finger-based rotation gestures (do not affect Forward/Backward)
+                fingers_up = count_fingers_up(landmarks)
+                if fingers_up == 1:
+                    detected_label = "Rotate_Right"
+                elif fingers_up == 2:
+                    detected_label = "Rotate_Left"
+                # Keep circle gestures as alternative rotation inputs
+                # Circle gestures disabled (no rotate_ccw / rotate_cw)
+                elif is_hand_open(landmarks) and distance_to_center < center_threshold:
+                    detected_label = "Center"
+                else:
+                    detected_label = pos_label
 
         # Draw hand
         mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -232,15 +239,19 @@ while True:
     if stable_counter >= stable_threshold:
         if current_display != detected_label:
             current_display = detected_label
-            if ser and ser.is_open:
-                try:
-                    ser.write((current_display + '\n').encode('utf-8'))
-                    print("Sent to ESP32:", current_display)
-                except Exception as e:
-                    print("Serial write error:", e)
+            # Do not send any labels that contain 'Center'
+            if 'Center' in current_display:
+                # Suppress sending center labels to the ESP32
+                print("[SUPPRESS] Center label suppressed - not sent")
             else:
-                print("Detected (no serial):"
-, current_display)
+                if ser and ser.is_open:
+                    try:
+                        ser.write((current_display + '\n').encode('utf-8'))
+                        print("Sent to ESP32:", current_display)
+                    except Exception as e:
+                        print("Serial write error:", e)
+                else:
+                    print("Detected (no serial):", current_display)
 
     # Read serial
     if ser and ser.is_open:
@@ -256,9 +267,9 @@ while True:
     color = {
         "Stop": (0, 0, 255),
         "Forward": (0, 255, 0),
-        "Downward": (255, 255, 0),
-        "Turn_CW": (255, 0, 255),
-        "Turn_CCW": (0, 255, 255),
+        "Backward": (255, 255, 0),
+        "Rotate_Right": (255, 0, 255),
+        "Rotate_Left": (0, 255, 255),
         "Center": (100, 100, 255)
     }.get(current_display, (0, 255, 255))
 
