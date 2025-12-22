@@ -11,88 +11,26 @@
 // Configuration
 #include "config.h"
 
-// HAL Layer
-#include "hal/hal_gpio.h"
-#include "hal/hal_pwm.h"
-#include "hal/hal_timer.h"
+// Drivers
+#include "drivers/motor_driver.h"
 
-// Forward declarations (will be implemented in later tasks)
+// Shared resources
+#include "shared/queues.h"
+
+// Safety
+#include "safety/watchdog.h"
+#include "safety/timeout_monitor.h"
+#include "safety/emergency_stop.h"
+
+// Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
 void task_sensor_fusion(void *pvParameters);
 void task_safety_monitor(void *pvParameters);
 void task_telemetry(void *pvParameters);
 
-/**
- * @brief Initialize HAL layer for motor control pins
- */
-void initHAL_Motors(void) {
-    Serial.println("[HAL] Initializing motor control pins...");
-    
-    // Initialize PWM pins for motor speed control
-    HAL_PWM_Init(FRONT_RIGHT_ENA, 500, 8);  // 500Hz, 8-bit (0-255)
-    HAL_PWM_Init(BACK_RIGHT_ENA, 500, 8);
-    // Note: FRONT_LEFT_ENA and BACK_LEFT_ENA share channels with FR and BR
-    
-    // Initialize GPIO pins for motor direction control
-    HAL_GPIO_Init(FRONT_RIGHT_IN1, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(FRONT_RIGHT_IN2, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(FRONT_LEFT_IN3, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(FRONT_LEFT_IN4, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(BACK_RIGHT_IN1, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(BACK_RIGHT_IN2, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(BACK_LEFT_IN3, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(BACK_LEFT_IN4, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    
-    // Initialize all motors to stopped state
-    HAL_PWM_Stop(FRONT_RIGHT_ENA);
-    HAL_PWM_Stop(BACK_RIGHT_ENA);
-    HAL_GPIO_Write(FRONT_RIGHT_IN1, HAL_GPIO_LOW);
-    HAL_GPIO_Write(FRONT_RIGHT_IN2, HAL_GPIO_LOW);
-    HAL_GPIO_Write(FRONT_LEFT_IN3, HAL_GPIO_LOW);
-    HAL_GPIO_Write(FRONT_LEFT_IN4, HAL_GPIO_LOW);
-    HAL_GPIO_Write(BACK_RIGHT_IN1, HAL_GPIO_LOW);
-    HAL_GPIO_Write(BACK_RIGHT_IN2, HAL_GPIO_LOW);
-    HAL_GPIO_Write(BACK_LEFT_IN3, HAL_GPIO_LOW);
-    HAL_GPIO_Write(BACK_LEFT_IN4, HAL_GPIO_LOW);
-    
-    Serial.println("[HAL] Motor control pins initialized");
-}
-
-/**
- * @brief Initialize HAL layer for sensors
- */
-void initHAL_Sensors(void) {
-    Serial.println("[HAL] Initializing sensor pins...");
-    
-    // Ultrasonic sensor pins
-    HAL_GPIO_Init(ULTRASONIC_TRIG, HAL_GPIO_OUTPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Init(ULTRASONIC_ECHO, HAL_GPIO_INPUT, HAL_GPIO_FLOATING);
-    HAL_GPIO_Write(ULTRASONIC_TRIG, HAL_GPIO_LOW);
-    
-    // Servo PWM (will be initialized by servo driver)
-    // HAL_PWM_Init(SERVO_PIN, 50, 8);  // 50Hz for servo
-    
-    Serial.println("[HAL] Sensor pins initialized");
-}
-
-/**
- * @brief Initialize watchdog timer
- */
-void initHAL_Watchdog(void) {
-    Serial.println("[HAL] Initializing watchdog timer...");
-    
-    HAL_Timer_WatchdogConfig wdt_config = {
-        .timeout_ms = WATCHDOG_TIMEOUT_MS,
-        .enable = true
-    };
-    
-    if (HAL_Timer_WatchdogInit(&wdt_config)) {
-        Serial.println("[HAL] Watchdog timer initialized (" + String(WATCHDOG_TIMEOUT_MS) + " ms)");
-    } else {
-        Serial.println("[HAL] ⚠️ Watchdog timer initialization failed");
-    }
-}
+// Global motor driver instance
+MotorDriver motor_driver;
 
 void setup() {
     // Initialize Serial for debugging
@@ -108,16 +46,101 @@ void setup() {
     Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
     Serial.println("========================================\n");
     
-    // Task 1.2 - Initialize HAL layer
-    initHAL_Motors();
-    initHAL_Sensors();
-    initHAL_Watchdog();
+    // Initialize shared queues and semaphores
+    Serial.println("[SETUP] Initializing shared queues...");
+    if (!initSharedQueues()) {
+        Serial.println("[ERROR] Failed to initialize shared queues!");
+        while (1) delay(1000);  // Halt on error
+    }
+    Serial.println("[SETUP] Shared queues initialized");
     
-    // TODO: Task 1.3 - Initialize MotorDriver
-    // TODO: Task 1.4 - Create FreeRTOS tasks
+    // Initialize MotorDriver with common PWM pin
+    Serial.println("[SETUP] Initializing MotorDriver...");
+    MotorDriver::MotorConfig motor_configs[4] = {
+        // Front Left Motor (direction pins only)
+        {FRONT_LEFT_IN3, FRONT_LEFT_IN4},
+        // Front Right Motor
+        {FRONT_RIGHT_IN1, FRONT_RIGHT_IN2},
+        // Back Left Motor
+        {BACK_LEFT_IN3, BACK_LEFT_IN4},
+        // Back Right Motor
+        {BACK_RIGHT_IN1, BACK_RIGHT_IN2}
+    };
     
-    Serial.println("[SETUP] HAL layer initialized");
-    Serial.println("[SETUP] Ready for MotorDriver implementation (Task 1.3)\n");
+    // Initialize with common PWM pin (pin 34) and LEDC channel 0
+    if (!motor_driver.init(motor_configs, MOTOR_PWM_COMMON, 0)) {
+        Serial.println("[ERROR] Failed to initialize MotorDriver!");
+        while (1) delay(1000);  // Halt on error
+    }
+    Serial.println("[SETUP] MotorDriver initialized (common PWM on pin " + String(MOTOR_PWM_COMMON) + ")");
+    
+    // Initialize safety systems
+    Serial.println("[SETUP] Initializing safety systems...");
+    watchdog_init(WATCHDOG_TIMEOUT_MS);
+    timeout_monitor_init(COMMAND_TIMEOUT_MS);
+    emergency_stop_init();
+    Serial.println("[SETUP] Safety systems initialized");
+    
+    // Create FreeRTOS tasks
+    Serial.println("[SETUP] Creating FreeRTOS tasks...");
+    
+    // Task 1: Safety Monitor (Highest Priority - 5)
+    xTaskCreate(
+        task_safety_monitor,
+        "SafetyMonitor",
+        TASK_STACK_SIZE_SAFETY_MONITOR,
+        NULL,
+        TASK_PRIORITY_SAFETY_MONITOR,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: SafetyMonitor (Priority 5)");
+    
+    // Task 2: Motor Control (Priority 4)
+    xTaskCreate(
+        task_motor_control,
+        "MotorControl",
+        TASK_STACK_SIZE_MOTOR_CONTROL,
+        NULL,
+        TASK_PRIORITY_MOTOR_CONTROL,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: MotorControl (Priority 4)");
+    
+    // Task 3: Sensor Fusion (Priority 3)
+    xTaskCreate(
+        task_sensor_fusion,
+        "SensorFusion",
+        TASK_STACK_SIZE_SENSOR_FUSION,
+        NULL,
+        TASK_PRIORITY_SENSOR_FUSION,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: SensorFusion (Priority 3)");
+    
+    // Task 4: Communication (Priority 2)
+    xTaskCreate(
+        task_communication,
+        "Communication",
+        TASK_STACK_SIZE_COMMUNICATION,
+        NULL,
+        TASK_PRIORITY_COMMUNICATION,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: Communication (Priority 2)");
+    
+    // Task 5: Telemetry (Lowest Priority - 1)
+    xTaskCreate(
+        task_telemetry,
+        "Telemetry",
+        TASK_STACK_SIZE_TELEMETRY,
+        NULL,
+        TASK_PRIORITY_TELEMETRY,
+        NULL
+    );
+    Serial.println("[SETUP] Created task: Telemetry (Priority 1)");
+    
+    Serial.println("\n[SETUP] All tasks created successfully!");
+    Serial.println("[SETUP] System ready - FreeRTOS scheduler starting...\n");
 }
 
 void loop() {

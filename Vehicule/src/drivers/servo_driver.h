@@ -1,0 +1,84 @@
+#ifndef SERVO_DRIVER_H
+#define SERVO_DRIVER_H
+
+#include <ESP32Servo.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+/**
+ * @file servo_driver.h
+ * @brief Servo motor driver for scanning/obstacle detection
+ * @details Based on Vehicule_Controller.ino servo implementation
+ */
+
+class ServoDriver {
+public:
+    /**
+     * @brief Constructor
+     */
+    ServoDriver();
+    
+    /**
+     * @brief Initialize servo on specified pin
+     * @param pin GPIO pin number for servo control
+     * @return true if successful, false otherwise
+     */
+    bool init(uint8_t pin);
+    
+    /**
+     * @brief Set servo to specific angle
+     * @param angle Angle in degrees (0-180)
+     */
+    void setAngle(int angle);
+    
+    /**
+     * @brief Start servo sweep
+     * @param min_angle Minimum angle in degrees
+     * @param max_angle Maximum angle in degrees
+     * @param step_deg Step size in degrees
+     * @param interval_ms Time between steps in milliseconds
+     */
+    void startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms);
+    
+    /**
+     * @brief Update servo sweep (call periodically)
+     * @details Based on updateServoSensor() from Vehicule_Controller.ino
+     */
+    void update();
+    
+    /**
+     * @brief Check if servo is currently sweeping
+     * @return true if sweeping, false if resting or stopped
+     */
+    bool isSweeping() const;
+    
+    /**
+     * @brief Stop servo sweep
+     */
+    void stopSweep();
+    
+    /**
+     * @brief Get current servo angle
+     * @return Current angle in degrees
+     */
+    int getCurrentAngle() const;
+    
+private:
+    Servo servo_;
+    uint8_t pin_;
+    bool initialized_;
+    
+    // Sweep state variables (matching Vehicule_Controller.ino)
+    int current_angle_;
+    int min_angle_;
+    int max_angle_;
+    int step_deg_;
+    unsigned long last_step_ms_;
+    unsigned long step_interval_ms_;
+    unsigned long sweep_finished_ms_;
+    bool sweeping_;
+    bool sweep_resting_;
+    unsigned long rest_interval_ms_;
+};
+
+#endif // SERVO_DRIVER_H
