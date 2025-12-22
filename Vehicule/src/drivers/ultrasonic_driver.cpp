@@ -78,3 +78,4 @@ bool Ultrasonic::isObstacle(float threshold_cm) {
 float Ultrasonic::getLastDistance() const {
     return last_distance_;
 }
+

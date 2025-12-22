@@ -65,7 +65,7 @@ void task_motor_control(void *pvParameters) {
                 vTaskDelayUntil(&lastWakeTime, period);
                 continue;
             }
-            
+              
             // Check safety semaphore (secondary safety mechanism)
             // Semaphore is given initially (safe state)
             // If we CAN take semaphore, system is safe
