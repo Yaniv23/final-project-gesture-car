@@ -35,7 +35,7 @@ MotorDriver motor_driver;
 void setup() {
     // Initialize Serial for debugging
     Serial.begin(SERIAL_BAUD_RATE);
-    delay(1000);  // Wait for Serial Monitor to connect
+    HAL_Timer_DelayMs(1000);  // Wait for Serial Monitor to connect
     
     Serial.println("\n========================================");
     Serial.println("Gesture Car - ESP32 Vehicle Controller");
@@ -148,16 +148,20 @@ void loop() {
     // In a FreeRTOS setup, loop() should not contain blocking code
     // All work is done in tasks created in setup()
     
+    // Feed watchdog timer (safety mechanism)
+    HAL_Timer_WatchdogFeed();
+    
     // This delay ensures loop() doesn't consume CPU
     // In production, you might remove loop() entirely or use it for
     // low-priority background tasks
     vTaskDelay(pdMS_TO_TICKS(1000));
     
     // Optional: Print free heap periodically for debugging
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 5000) {
+    static uint32_t lastPrint = 0;
+    uint32_t now = HAL_Timer_GetMillis();
+    if (now - lastPrint > 5000) {
         Serial.println("[LOOP] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
-        lastPrint = millis();
+        lastPrint = now;
     }
 }
 
