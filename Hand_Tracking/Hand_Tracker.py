@@ -8,30 +8,36 @@ from constant import COM_PORT, BAUD_RATE
 
 # === SETUP ===
 mp_hands = mp.solutions.hands
-
-# ✅ allow up to 2 hands, but we will LOCK on one (so it won't jump)
 hands = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=2,
+    model_complexity=1,
     min_detection_confidence=0.6,
     min_tracking_confidence=0.6
 )
-
 mp_draw = mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0)
 
-# Serial to ESP32 - Try to connect, but make it optional
+# Serial (optional)
 ser = None
 
 def find_available_ports():
-    """Find all available COM ports"""
     ports = serial.tools.list_ports.comports()
-    available = []
-    for port in ports:
-        available.append(port.device)
-    return available
+    return [p.device for p in ports]
 
-# Try to connect to serial port
+def send_stop_safe():
+    """Best-effort STOP (for shutdown/crash cases)."""
+    global ser
+    if ser and ser.is_open:
+        try:
+            # Send a few times to improve chance of arrival
+            for _ in range(3):
+                ser.write(b"Stop\n")
+                time.sleep(0.03)
+            ser.flush()
+        except Exception:
+            pass
+
 try:
     ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
     time.sleep(2)
@@ -49,245 +55,270 @@ except serial.SerialException as e:
     print("\n[INFO] Running in camera-only mode (no serial communication)")
     print("       Hand tracking will still work, but commands won't be sent to ESP32.\n")
 
-# Stability filtering
+# =========================
+# Stability filtering (FASTER)
+# =========================
 last_detected = ""
 current_display = ""
 stable_counter = 0
-stable_threshold = 10  # Frames needed to confirm a new label
 
-# ==========================
-# ✅ Hand lock (no jumping)
-# ==========================
+stable_threshold = 5   # was 10 -> faster response
+stop_threshold = 1     # Stop almost immediate (safety)
+
+# =========================
+# Hand lock by proximity (STRONG LOCK)
+# =========================
+locked_hand = False
 locked_center = None
-missing_frames = 0
-MISSING_RELEASE_FRAMES = 12   # frames without hand before releasing lock
-SWITCH_DISTANCE_PX = 220      # if the "best" hand is too far, don't switch
+missing_locked_frames = 0
+release_after_missing = 8   # faster unlock if the locked hand disappears
 
-def hand_center_from_landmarks(hand_landmarks, w, h):
-    lms = hand_landmarks.landmark
-    x_avg = sum(lm.x for lm in lms) / 21
-    y_avg = sum(lm.y for lm in lms) / 21
-    return int(x_avg * w), int(y_avg * h)
+max_jump_distance = 200     # if closest hand is farther than this -> treat as missing
+far_frames = 0
+release_after_far = 6
 
-def choose_locked_hand(multi_hand_landmarks, w, h, locked_center):
-    centers = [hand_center_from_landmarks(hm, w, h) for hm in multi_hand_landmarks]
+# Optional smoothing (helps avoid jitter near thresholds)
+use_smoothing = True
+alpha = 0.45          # higher -> more responsive (was 0.35)
 
-    if locked_center is None:
-        return 0, multi_hand_landmarks[0], centers[0], 0.0
+smooth_center = None
 
-    dists = [math.hypot(c[0] - locked_center[0], c[1] - locked_center[1]) for c in centers]
-    best_idx = min(range(len(dists)), key=lambda i: dists[i])
-    return best_idx, multi_hand_landmarks[best_idx], centers[best_idx], dists[best_idx]
-
-def get_direction_label(angle_deg):
-    if -22.5 < angle_deg <= 22.5:
-        return "Sideway_Right"
-    elif 22.5 < angle_deg <= 67.5:
-        return "diagonal_forward_right"
-    elif 67.5 < angle_deg <= 112.5:
-        return "Forward"
-    elif 112.5 < angle_deg <= 157.5:
-        return "diagonal_forward_left"
-    elif 157.5 < angle_deg or angle_deg <= -157.5:
-        return "Sideway_Left"
-    elif -157.5 < angle_deg <= -112.5:
-        return "diagonal_backward_left"
-    elif -112.5 < angle_deg <= -67.5:
-        return "Backward"
-    elif -67.5 < angle_deg <= -22.5:
-        return "diagonal_backward_right"
-    else:
-        return "Center"
-
+# =========================
+# Gesture helpers
+# =========================
 def is_hand_closed(landmarks):
-    fingers = {
-        "index": (8, 6),
-        "middle": (12, 10),
-        "ring": (16, 14),
-        "pinky": (20, 18),
-    }
-    bent_count = 0
+    fingers = {"index": (8, 6), "middle": (12, 10), "ring": (16, 14), "pinky": (20, 18)}
+    bent = 0
     for tip_idx, pip_idx in fingers.values():
         if landmarks[tip_idx].y > landmarks[pip_idx].y:
-            bent_count += 1
-    return bent_count == 4
+            bent += 1
+    return bent == 4
 
-def count_fingers_up(landmarks):
-    """Return the number of fingers (index, middle, ring, pinky) that are 'up'."""
-    fingers = [
-        (8, 6),   # index
-        (12, 10), # middle
-        (16, 14), # ring
-        (20, 18), # pinky
-    ]
-    count = 0
-    for tip_idx, pip_idx in fingers:
-        if landmarks[tip_idx].y < landmarks[pip_idx].y:
-            count += 1
-    return count
+def is_one_finger_up(landmarks):
+    return (
+        landmarks[8].y < landmarks[6].y and
+        landmarks[12].y > landmarks[10].y and
+        landmarks[16].y > landmarks[14].y and
+        landmarks[20].y > landmarks[18].y
+    )
 
-def is_hand_open(landmarks):
+def is_two_fingers_up(landmarks):
     return (
         landmarks[8].y < landmarks[6].y and
         landmarks[12].y < landmarks[10].y and
-        landmarks[16].y < landmarks[14].y and
-        landmarks[20].y < landmarks[18].y and
-        landmarks[20].y < landmarks[18].y
+        landmarks[16].y > landmarks[14].y and
+        landmarks[20].y > landmarks[18].y
     )
 
-# Circle gestures (disabled)
-# The thumb-index circle gestures were previously used to emit rotate_cw / rotate_ccw.
-# They are intentionally left out (disabled) to avoid accidental rotation triggers.
+def get_direction_label_from_position(dx, dy, center_threshold):
+    dist = math.hypot(dx, dy)
+    if dist < center_threshold:
+        return "Center"
 
-# === MAIN LOOP ===
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+    angle = math.degrees(math.atan2(dy, dx))
+    if -22.5 < angle <= 22.5:
+        return "Sideway_Right"
+    elif 22.5 < angle <= 67.5:
+        return "diagonal_forward_right"
+    elif 67.5 < angle <= 112.5:
+        return "Forward"
+    elif 112.5 < angle <= 157.5:
+        return "diagonal_forward_left"
+    elif angle > 157.5 or angle <= -157.5:
+        return "Sideway_Left"
+    elif -157.5 < angle <= -112.5:
+        return "diagonal_backward_left"
+    elif -112.5 < angle <= -67.5:
+        return "Backward"
+    elif -67.5 < angle <= -22.5:
+        return "diagonal_backward_right"
+    return "Center"
 
-    frame = cv2.flip(frame, 1)
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(frame_rgb)
+def hand_center_from_landmarks(hand_landmarks, w, h):
+    lms = hand_landmarks.landmark
+    x_avg = sum(lm.x for lm in lms) / 21.0
+    y_avg = sum(lm.y for lm in lms) / 21.0
+    return int(x_avg * w), int(y_avg * h)
 
-    h, w, _ = frame.shape
-    cx, cy = w // 2, h // 2
-    center_threshold = 60
+def pick_locked_hand_index(results, w, h):
+    global locked_hand, locked_center, missing_locked_frames, far_frames, smooth_center
 
-    # Draw axes (✅ no center circle)
-    cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 1)
-    cv2.line(frame, (0, cy), (w, cy), (200, 200, 200), 1)
-    cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 1)        # Diagonal ↘️
-    cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 1)        # Diagonal ↙️
-    # cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 1)  # ❌ removed
-
-    detected_label = ""
-
-    if results.multi_hand_landmarks:
-        # ✅ choose ONE hand (locked) instead of always [0]
-        best_idx, hand_landmarks, chosen_center, best_dist = choose_locked_hand(
-            results.multi_hand_landmarks, w, h, locked_center
-        )
-
-        # update lock only if not a big jump
-        if locked_center is None or best_dist <= SWITCH_DISTANCE_PX:
-            locked_center = chosen_center
-
-        missing_frames = 0
-
-        landmarks = hand_landmarks.landmark
-
-        x_avg = sum(lm.x for lm in landmarks) / 21
-        y_avg = sum(lm.y for lm in landmarks) / 21
-
-        # ✅ keep your original hx/hy calculation, but if you prefer stability use chosen_center:
-        # hx, hy = chosen_center
-        hx, hy = int(x_avg * w), int(y_avg * h)
-
-        dx = hx - cx
-        dy = cy - hy
-        angle_deg = math.degrees(math.atan2(dy, dx))
-        distance_to_center = math.hypot(dx, dy)
-
-        # === GESTURE DECISION TREE ===
-        # Priority:
-        # 1. Stop (hand closed)
-        # 2. Forward/Backward determined ONLY by hand position (angle)
-        # 3. Rotation gestures (finger counts or circle gestures)
-        # 4. Center (open hand near center)
-        # 5. Fallback to directional label
-        if is_hand_closed(landmarks):
-            detected_label = "Stop"
-        else:
-            pos_label = get_direction_label(angle_deg)
-
-            # Forward/Backward are controlled only by hand position
-            if pos_label in ("Forward", "Backward"):
-                detected_label = pos_label
-            else:
-                # Finger-based rotation gestures (do not affect Forward/Backward)
-                fingers_up = count_fingers_up(landmarks)
-                if fingers_up == 1:
-                    detected_label = "Rotate_Right"
-                elif fingers_up == 2:
-                    detected_label = "Rotate_Left"
-                # Keep circle gestures as alternative rotation inputs
-                # Circle gestures disabled (no rotate_ccw / rotate_cw)
-                elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-                    detected_label = "Center"
-                else:
-                    detected_label = pos_label
-
-        # Draw hand
-        mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-        cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
-        cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
-
-    else:
-        # No hand detected - send Stop command
-        missing_frames += 1
-        if missing_frames >= MISSING_RELEASE_FRAMES:
+    if not results.multi_hand_landmarks:
+        missing_locked_frames += 1
+        if missing_locked_frames >= release_after_missing:
+            locked_hand = False
             locked_center = None
-        detected_label = "Stop"
+            smooth_center = None
+            far_frames = 0
+        return None
 
-    # Stability filter (applies to both hand detected and no hand detected)
-    if detected_label == last_detected:
-        stable_counter += 1
+    missing_locked_frames = 0
+
+    centers = [hand_center_from_landmarks(hlm, w, h) for hlm in results.multi_hand_landmarks]
+
+    # Lock immediately when first hand appears
+    if not locked_hand or locked_center is None:
+        locked_hand = True
+        locked_center = centers[0]
+        smooth_center = centers[0]
+        far_frames = 0
+        return 0
+
+    # Choose the hand closest to the locked center
+    best_i = 0
+    best_d = float("inf")
+    for i, (x, y) in enumerate(centers):
+        d = math.hypot(x - locked_center[0], y - locked_center[1])
+        if d < best_d:
+            best_d = d
+            best_i = i
+
+    # If jump is too large, treat as missing (don’t “switch hands”)
+    if best_d > max_jump_distance:
+        far_frames += 1
+        if far_frames >= release_after_far:
+            locked_hand = False
+            locked_center = None
+            smooth_center = None
+            far_frames = 0
+        return None
+
+    far_frames = 0
+
+    chosen_center = centers[best_i]
+    if use_smoothing and smooth_center is not None:
+        sx, sy = smooth_center
+        nx = int(alpha * chosen_center[0] + (1 - alpha) * sx)
+        ny = int(alpha * chosen_center[1] + (1 - alpha) * sy)
+        smooth_center = (nx, ny)
+        locked_center = (nx, ny)
     else:
-        stable_counter = 0
-        last_detected = detected_label
+        locked_center = chosen_center
+        smooth_center = chosen_center
 
-    if stable_counter >= stable_threshold:
-        if current_display != detected_label:
-            current_display = detected_label
-            # Do not send any labels that contain 'Center'
-            if 'Center' in current_display:
-                # Suppress sending center labels to the ESP32
-                print("[SUPPRESS] Center label suppressed - not sent")
-            else:
-                if ser and ser.is_open:
-                    try:
-                        ser.write((current_display + '\n').encode('utf-8'))
-                        print("Sent to ESP32:", current_display)
-                    except Exception as e:
-                        print("Serial write error:", e)
-                else:
-                    print("Detected (no serial):", current_display)
+    return best_i
 
-    # Read serial
+def send_if_needed(cmd):
+    """Do not send Center. Send only on change (handled outside)."""
+    if cmd == "Center":
+        return
     if ser and ser.is_open:
         try:
-            if ser.in_waiting:
-                line = ser.readline().decode('utf-8').strip()
-                if line:
-                    print("ESP32:", line)
+            ser.write((cmd + "\n").encode("utf-8"))
+            # print("Sent:", cmd)
         except Exception as e:
-            print("Serial read error:", e)
+            print("Serial write error:", e)
+    else:
+        print("Detected (no serial):", cmd)
 
-    # Display label (✅ only the command already, no extra debug text)
-    color = {
-        "Stop": (0, 0, 255),
-        "Forward": (0, 255, 0),
-        "Backward": (255, 255, 0),
-        "Rotate_Right": (255, 0, 255),
-        "Rotate_Left": (0, 255, 255),
-        "Center": (100, 100, 255)
-    }.get(current_display, (0, 255, 255))
+# =========================
+# MAIN LOOP (with crash-safe STOP)
+# =========================
+try:
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-    cv2.imshow("Hand + Serial", frame)
+        frame = cv2.flip(frame, 1)
+        # Ensure square image for MediaPipe ROI conversion (avoids M_RECT error)
+        h0, w0, _ = frame.shape
+        if w0 != h0:
+            size = max(w0, h0)
+            pad_left = (size - w0) // 2
+            pad_right = size - w0 - pad_left
+            pad_top = (size - h0) // 2
+            pad_bottom = size - h0 - pad_top
+            frame = cv2.copyMakeBorder(frame, pad_top, pad_bottom, pad_left, pad_right,
+                                       cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(frame_rgb)
 
-    # Check if window was closed with X button or 'q' key pressed
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'):
-        break
+        h, w, _ = frame.shape
+        cx, cy = w // 2, h // 2
+        center_threshold = 60
 
-    # Check if window was closed by clicking X button
-    if cv2.getWindowProperty("Hand + Serial", cv2.WND_PROP_VISIBLE) < 1:
-        break
+        # Draw axes + diagonals + center zone
+        cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 1)
+        cv2.line(frame, (0, cy), (w, cy), (200, 200, 200), 1)
+        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 1)
+        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 1)
+        cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 1)
 
-# Cleanup
-cap.release()
-if ser and ser.is_open:
-    ser.close()
-    print("Serial port closed")
-cv2.destroyAllWindows()
+        detected_label = ""
+
+        hand_idx = pick_locked_hand_index(results, w, h)
+
+        if hand_idx is not None and results.multi_hand_landmarks:
+            hand_landmarks = results.multi_hand_landmarks[hand_idx]
+            landmarks = hand_landmarks.landmark
+
+            hx, hy = locked_center if locked_center is not None else hand_center_from_landmarks(hand_landmarks, w, h)
+            dx = hx - cx
+            dy = cy - hy
+
+            # === PRIORITY TREE ===
+            if is_hand_closed(landmarks):
+                detected_label = "Stop"
+            elif is_two_fingers_up(landmarks):
+                detected_label = "rotate_ccw"
+            elif is_one_finger_up(landmarks):
+                detected_label = "rotate_cw"
+            else:
+                detected_label = get_direction_label_from_position(dx, dy, center_threshold)
+
+            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
+            cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
+        else:
+            detected_label = "Stop"
+
+        # Stability filter (Stop faster)
+        threshold = stop_threshold if detected_label == "Stop" else stable_threshold
+
+        if detected_label == last_detected:
+            stable_counter += 1
+        else:
+            stable_counter = 0
+            last_detected = detected_label
+
+        if stable_counter >= threshold:
+            if current_display != detected_label:
+                current_display = detected_label
+                send_if_needed(current_display)
+
+        # Display label
+        color = {
+            "Stop": (0, 0, 255),
+            "Forward": (0, 255, 0),
+            "Backward": (0, 165, 255),
+            "rotate_cw": (255, 0, 255),
+            "rotate_ccw": (0, 255, 255),
+            "Center": (100, 100, 255)
+        }.get(current_display, (0, 255, 255))
+
+        cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv2.imshow("Hand + Serial", frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
+            break
+        if cv2.getWindowProperty("Hand + Serial", cv2.WND_PROP_VISIBLE) < 1:
+            break
+
+except KeyboardInterrupt:
+    print("\n[INFO] KeyboardInterrupt - stopping...")
+except Exception as e:
+    print("\n[ERROR] Unexpected crash:", e)
+finally:
+    # IMPORTANT: try to stop the car on any exit path
+    send_stop_safe()
+
+    cap.release()
+    if ser and ser.is_open:
+        try:
+            ser.close()
+            print("Serial port closed")
+        except Exception:
+            pass
+    cv2.destroyAllWindows()
