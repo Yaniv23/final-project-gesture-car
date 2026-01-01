@@ -4,13 +4,14 @@
 // ============================================================================
 // Hardware Pin Definitions
 // ============================================================================
-// Based on existing Vehicule_Controller.ino pin assignments
+// NOTE: ESP32 GPIO 34, 35, 36, 39 are INPUT-ONLY and cannot be used for PWM output
+// Using valid PWM-capable pins (2-33, except 24, 28-31)
 
 // Common PWM pin for all motors (controls speed of all motors simultaneously)
-#define MOTOR_PWM_COMMON   34  // Common PWM enable pin for all 4 motors
+#define MOTOR_PWM_COMMON   2  // Valid PWM pin - was 34 (input-only)
 
 // Front Right Motor (L298N Driver #1)
-#define FRONT_RIGHT_IN1    35
+#define FRONT_RIGHT_IN1    5  // Valid GPIO - was 35 (input-only)
 #define FRONT_RIGHT_IN2    32
 
 // Front Left Motor (L298N Driver #1)

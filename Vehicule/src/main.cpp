@@ -22,12 +22,18 @@
 #include "safety/timeout_monitor.h"
 #include "safety/emergency_stop.h"
 
+// Communication
+#include "communication/command_protocol.h"
+
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
 void task_sensor_fusion(void *pvParameters);
 void task_safety_monitor(void *pvParameters);
 void task_telemetry(void *pvParameters);
+
+// Test function (forward declaration)
+void test_command_reception();
 
 // Global motor driver instance
 MotorDriver motor_driver;
@@ -141,6 +147,9 @@ void setup() {
     
     Serial.println("\n[SETUP] All tasks created successfully!");
     Serial.println("[SETUP] System ready - FreeRTOS scheduler starting...\n");
+    
+    // Run command reception tests
+    test_command_reception();
 }
 
 void loop() {
@@ -163,5 +172,107 @@ void loop() {
         Serial.println("[LOOP] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
         lastPrint = now;
     }
+}
+
+// ============================================================================
+// TEST SUITE: Command Reception Testing
+// ============================================================================
+
+void test_command_reception() {
+    Serial.println("\n========================================");
+    Serial.println("TEST SUITE: Command Reception Validation");
+    Serial.println("========================================\n");
+    
+    // Define all test commands with names
+    struct CommandTest {
+        uint8_t cmd_byte;
+        const char* cmd_name;
+    };
+    
+    CommandTest tests[] = {
+        {CMD_STOP, "STOP"},
+        {CMD_FORWARD, "FORWARD"},
+        {CMD_BACKWARD, "BACKWARD"},
+        {CMD_STRAFE_LEFT, "STRAFE_LEFT"},
+        {CMD_STRAFE_RIGHT, "STRAFE_RIGHT"},
+        {CMD_ROTATE_CW, "ROTATE_CW"},
+        {CMD_ROTATE_CCW, "ROTATE_CCW"},
+        {CMD_DIAGONAL_FORWARD_LEFT, "DIAGONAL_FORWARD_LEFT"},
+        {CMD_DIAGONAL_FORWARD_RIGHT, "DIAGONAL_FORWARD_RIGHT"},
+        {CMD_DIAGONAL_BACKWARD_LEFT, "DIAGONAL_BACKWARD_LEFT"},
+        {CMD_DIAGONAL_BACKWARD_RIGHT, "DIAGONAL_BACKWARD_RIGHT"},
+        {CMD_PIVOT_LEFT, "PIVOT_LEFT"},
+        {CMD_PIVOT_RIGHT, "PIVOT_RIGHT"}
+    };
+    
+    int num_tests = sizeof(tests) / sizeof(tests[0]);
+    int passed = 0;
+    int failed = 0;
+    
+    Serial.println("Testing command validation for all commands:\n");
+    
+    // Test each valid command
+    for (int i = 0; i < num_tests; i++) {
+        bool is_valid = isValidCommand(tests[i].cmd_byte);
+        
+        if (is_valid) {
+            Serial.print("[✓ PASS] ");
+            passed++;
+        } else {
+            Serial.print("[✗ FAIL] ");
+            failed++;
+        }
+        
+        Serial.print("Command: ");
+        Serial.print(tests[i].cmd_name);
+        Serial.print(" (0x");
+        if (tests[i].cmd_byte < 0x10) Serial.print("0");
+        Serial.print(tests[i].cmd_byte, HEX);
+        Serial.println(")");
+    }
+    
+    // Test invalid commands
+    Serial.println("\nTesting invalid command rejection:\n");
+    
+    uint8_t invalid_commands[] = {0x0D, 0x0E, 0x7F, 0xFF};
+    int num_invalid = sizeof(invalid_commands) / sizeof(invalid_commands[0]);
+    
+    for (int i = 0; i < num_invalid; i++) {
+        bool is_valid = isValidCommand(invalid_commands[i]);
+        
+        if (!is_valid) {
+            Serial.print("[✓ PASS] ");
+            passed++;
+        } else {
+            Serial.print("[✗ FAIL] ");
+            failed++;
+        }
+        
+        Serial.print("Invalid Command: 0x");
+        if (invalid_commands[i] < 0x10) Serial.print("0");
+        Serial.print(invalid_commands[i], HEX);
+        Serial.println(" (correctly rejected)");
+    }
+    
+    // Print summary
+    Serial.println("\n========================================");
+    Serial.println("TEST SUMMARY");
+    Serial.println("========================================");
+    Serial.print("Total Tests: ");
+    Serial.println(passed + failed);
+    Serial.print("Passed: ");
+    Serial.print(passed);
+    Serial.print(" (");
+    Serial.print((passed * 100) / (passed + failed));
+    Serial.println("%)");
+    Serial.print("Failed: ");
+    Serial.println(failed);
+    
+    if (failed == 0) {
+        Serial.println("\n✓ ALL TESTS PASSED - System ready!");
+    } else {
+        Serial.println("\n✗ SOME TESTS FAILED - Check implementation!");
+    }
+    Serial.println("========================================\n");
 }
 
