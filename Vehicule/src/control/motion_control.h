@@ -34,16 +34,16 @@ void motion_forward();
 void motion_backward();
 
 /**
- * @brief Strafe left
+ * @brief Sideway left
  * @details Based on Sideway_Left() from Vehicule_Controller.ino
  */
-void motion_strafe_left();
+void motion_sideway_left();
 
 /**
- * @brief Strafe right
+ * @brief Sideway right
  * @details Based on Sideway_Right() from Vehicule_Controller.ino
  */
-void motion_strafe_right();
+void motion_sideway_right();
 
 /**
  * @brief Rotate clockwise
@@ -58,28 +58,28 @@ void motion_rotate_cw();
 void motion_rotate_ccw();
 
 /**
- * @brief Diagonal forward left
+ * @brief Diagonal 315 degrees (forward-left)
  * @details Based on diagonal_forward_left() from Vehicule_Controller.ino
  */
-void motion_diagonal_forward_left();
+void motion_diagonal_315();
 
 /**
- * @brief Diagonal forward right
+ * @brief Diagonal 45 degrees (forward-right)
  * @details Based on diagonal_forward_right() from Vehicule_Controller.ino
  */
-void motion_diagonal_forward_right();
+void motion_diagonal_45();
 
 /**
- * @brief Diagonal backward left
+ * @brief Diagonal 225 degrees (backward-left)
  * @details Based on diagonal_backward_left() from Vehicule_Controller.ino
  */
-void motion_diagonal_backward_left();
+void motion_diagonal_225();
 
 /**
- * @brief Diagonal backward right
+ * @brief Diagonal 135 degrees (backward-right)
  * @details Based on diagonal_backward_right() from Vehicule_Controller.ino
  */
-void motion_diagonal_backward_right();
+void motion_diagonal_135();
 
 /**
  * @brief Pivot left (rotate around left side)

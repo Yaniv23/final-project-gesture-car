@@ -49,7 +49,18 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     }
 }
 
-bool espnow_init() {
+bool espnow_init(bool simulation_mode) {
+    // In simulation mode, skip WiFi initialization entirely (non-blocking)
+    if (simulation_mode) {
+        Serial.println("\n[SIM_MODE] 🧪 SIMULATION MODE ACTIVE");
+        Serial.println("[SIM_MODE] ESP-NOW receiver NOT required");
+        Serial.println("[SIM_MODE] Skipping WiFi initialization (simulation mode)\n");
+        return true;
+    }
+    
+    // Normal mode: Initialize WiFi and ESP-NOW
+    Serial.println("🔧 ESP32 set to STA mode");
+    
     // Set WiFi to station mode (matching Vehicule_Controller.ino)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();  // Disconnect from any previous connection

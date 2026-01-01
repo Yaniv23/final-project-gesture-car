@@ -49,8 +49,8 @@ bool MotorDriver::init(const MotorConfig motors[4], uint8_t common_pwm_pin, uint
         pinMode(motor_configs_[i].in1_pin, OUTPUT);
         pinMode(motor_configs_[i].in2_pin, OUTPUT);
         
-        // Set initial direction (forward)
-        digitalWrite(motor_configs_[i].in1_pin, HIGH);
+        // Set initial state to STOPPED (both pins LOW)
+        digitalWrite(motor_configs_[i].in1_pin, LOW);
         digitalWrite(motor_configs_[i].in2_pin, LOW);
     }
 
@@ -86,8 +86,9 @@ void MotorDriver::setMotorSpeed(uint8_t motor_id, int16_t speed) {
     } else if (speed < 0) {
         setDirection(motor_id, false); // Reverse
     } else {
-        // Speed is 0 - set direction to forward (maintains consistent state)
-        setDirection(motor_id, true);
+        // Speed is 0 - set both direction pins to LOW (true motor stop)
+        digitalWrite(motor_configs_[motor_id].in1_pin, LOW);
+        digitalWrite(motor_configs_[motor_id].in2_pin, LOW);
     }
     // Note: Speed magnitude is controlled by common PWM pin
     // The common PWM is set separately to control all motors' speed simultaneously
@@ -100,6 +101,12 @@ void MotorDriver::stopAll() {
 
     // Stop all motors by setting common PWM to 0
     setCommonPWM(0);
+    
+    // Set all direction pins to LOW for proper motor stop
+    for (uint8_t i = 0; i < 4; i++) {
+        digitalWrite(motor_configs_[i].in1_pin, LOW);
+        digitalWrite(motor_configs_[i].in2_pin, LOW);
+    }
 }
 
 void MotorDriver::setDirection(uint8_t motor_id, bool forward) {
