@@ -22,41 +22,19 @@ static Ultrasonic ultrasonic;
 extern volatile bool setupComplete;
 
 void task_sensor_fusion(void *pvParameters) {
-    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_SENSOR_FUSION);  // 50ms
+    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_SENSOR_FUSION);
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_SENSOR] Sensor fusion task started");
-    
-    // Wait for setup to complete before initializing sensors
-    Serial.println("[TASK_SENSOR] Waiting for setup to complete...");
     while (!setupComplete) {
-        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-    Serial.println("[TASK_SENSOR] Setup complete, initializing sensors...");
     
-    // Initialize ultrasonic sensor (matching Vehicule_Controller.ino setup)
     bool ultrasonic_ok = ultrasonic.init(ULTRASONIC_TRIG, ULTRASONIC_ECHO);
-    if (!ultrasonic_ok) {
-        Serial.println("[SENSOR] Warning: Ultrasonic sensor init failed - continuing anyway");
-    } else {
-        Serial.println("[SENSOR] Ultrasonic sensor initialized");
-    }
-    
-    // Initialize servo (matching Vehicule_Controller.ino: scanServo.attach(SERVO_PIN))
     bool servo_ok = servo.init(SERVO_PIN);
-    if (!servo_ok) {
-        Serial.println("[SENSOR] Warning: Servo init failed - continuing anyway");
-    } else {
-        Serial.println("[SENSOR] Servo initialized");
-    }
     
-    // Start servo sweep only if servo initialized successfully
     if (servo_ok) {
         servo.startSweep(0, 60, 5, 300);
-        Serial.println("[SENSOR] Servo sweep started");
     }
-    
-    Serial.println("[SENSOR] Sensor fusion task ready");
     
     // Track previous obstacle state to detect transitions
     bool prev_obstacle = false;

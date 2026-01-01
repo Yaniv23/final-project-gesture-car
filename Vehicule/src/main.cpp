@@ -255,24 +255,8 @@ void loop() {
 // ============================================================================
 
 void task_test_commands(void *pvParameters) {
-    // Give other tasks time to start up (2 seconds)
-    Serial.println("\n╔════════════════════════════════════════╗");
-    Serial.println("║  AUTOMATED TEST SUITE STARTING         ║");
-    Serial.println("║  Simulation Mode Active                ║");
-    Serial.println("╚════════════════════════════════════════╝\n");
-    Serial.println("[TEST] Waiting 2 seconds for other tasks to initialize...");
     vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    // Run the motor command queue test
     test_motor_led_actuation();
-    
-    // Delete this task after testing is complete
-    Serial.println("\n╔════════════════════════════════════════╗");
-    Serial.println("║  ALL TESTS COMPLETED                   ║");
-    Serial.println("║  Test Task Terminating                 ║");
-    Serial.println("╚════════════════════════════════════════╝\n");
-    Serial.println("[INFO] System will continue running in simulation mode");
-    Serial.println("[INFO] Set SIMULATION_MODE=0 in config.h for production use\n");
     vTaskDelete(NULL);
 }
 
@@ -282,97 +266,49 @@ void task_test_commands(void *pvParameters) {
 // ============================================================================
 
 void test_motor_led_actuation() {
-    Serial.println("\n========================================");
-    Serial.println("TEST SUITE: Command Queue Communication");
-    Serial.println("========================================");
-    Serial.println("Testing command send through queue\n");
+    Serial.println("[TEST] Starting command queue test");
     
-    // Test commands with motor movement descriptions
     struct CommandTest {
         uint8_t cmd_byte;
         const char* cmd_name;
-        const char* motor_pattern;  // Motor movement pattern
     };
     
     CommandTest tests[] = {
-        {CMD_STOP, "STOP", "Motors: STOP (All Stopped)"},
-        {CMD_FORWARD, "FORWARD", "Motors: FRF, FLF, BRF, BLF (All Forward)"},
-        {CMD_BACKWARD, "BACKWARD", "Motors: FRB, FLB, BRB, BLB (All Backward)"},
-        {CMD_SIDEWAY_LEFT, "SIDEWAY_LEFT", "Motors: FRF, FLB, BRB, BLF (Left strafe)"},
-        {CMD_SIDEWAY_RIGHT, "SIDEWAY_RIGHT", "Motors: FRB, FLF, BRF, BLB (Right strafe)"},
-        {CMD_ROTATE_CW, "ROTATE_CW", "Motors: FRB, FLF, BRB, BLF (Clockwise spin)"},
-        {CMD_ROTATE_CCW, "ROTATE_CCW", "Motors: FRF, FLB, BRF, BLB (Counter-clockwise spin)"},
-        {CMD_DIAGONAL_315, "DIAGONAL_315", "Motors: FRF, BLF (Forward-left diagonal)"},
-        {CMD_DIAGONAL_45, "DIAGONAL_45", "Motors: FLF, BRF (Forward-right diagonal)"},
-        {CMD_DIAGONAL_225, "DIAGONAL_225", "Motors: FRB, BLB (Backward-left diagonal)"},
-        {CMD_DIAGONAL_135, "DIAGONAL_135", "Motors: FLB, BRB (Backward-right diagonal)"},
-        {CMD_PIVOT_LEFT, "PIVOT_LEFT", "Motors: FRF, FLB, BR stop, BL stop (Pivot on left)"},
-        {CMD_PIVOT_RIGHT, "PIVOT_RIGHT", "Motors: FRB, FLF, BR stop, BL stop (Pivot on right)"}
+        {CMD_STOP, "STOP"},
+        {CMD_FORWARD, "FORWARD"},
+        {CMD_BACKWARD, "BACKWARD"},
+        {CMD_SIDEWAY_LEFT, "SIDEWAY_LEFT"},
+        {CMD_SIDEWAY_RIGHT, "SIDEWAY_RIGHT"},
+        {CMD_ROTATE_CW, "ROTATE_CW"},
+        {CMD_ROTATE_CCW, "ROTATE_CCW"},
+        {CMD_DIAGONAL_315, "DIAGONAL_315"},
+        {CMD_DIAGONAL_45, "DIAGONAL_45"},
+        {CMD_DIAGONAL_225, "DIAGONAL_225"},
+        {CMD_DIAGONAL_135, "DIAGONAL_135"},
+        {CMD_PIVOT_LEFT, "PIVOT_LEFT"},
+        {CMD_PIVOT_RIGHT, "PIVOT_RIGHT"}
     };
     
     int num_tests = sizeof(tests) / sizeof(tests[0]);
     int passed = 0;
-    int failed = 0;
-    
-    Serial.println("Sending commands to queue:\n");
-    Serial.println("Legend: F=Front, B=Back, R=Right, L=Left");
-    Serial.println("        F=Forward, B=Backward\n");
     
     for (int i = 0; i < num_tests; i++) {
-        Serial.println("----------------------------------------");
-        Serial.print("[TEST] Command ");
-        Serial.print(i + 1);
-        Serial.print("/");
-        Serial.print(num_tests);
-        Serial.print(": ");
-        Serial.println(tests[i].cmd_name);
-        Serial.print("Motor Pattern: ");
-        Serial.println(tests[i].motor_pattern);
-        Serial.print("Command: 0x");
-        if (tests[i].cmd_byte < 0x10) Serial.print("0");
-        Serial.print(tests[i].cmd_byte, HEX);
-        Serial.print(" -> ");
-        
-        // Send command directly to queue without pre-validation
         if (xQueueSend(xCommandQueue, &tests[i].cmd_byte, pdMS_TO_TICKS(100)) == pdPASS) {
-            Serial.println("SENT ✓");
+            Serial.print(".");
             passed++;
-        } else {
-            Serial.println("FAILED ✗");
-            failed++;
         }
+        vTaskDelay(pdMS_TO_TICKS(1000));
         
-        // Wait for motor control task to process and observe LED changes
-        Serial.println("Observing motor response for 3 seconds...");
-        vTaskDelay(pdMS_TO_TICKS(3000));
-        Serial.println();
-        
-        // Send STOP command between tests to ensure clean state
         if (i < num_tests - 1) {
-            Serial.println("[TEST] Sending STOP between tests...");
             uint8_t stop_cmd = CMD_STOP;
             xQueueSend(xCommandQueue, &stop_cmd, pdMS_TO_TICKS(100));
-            vTaskDelay(pdMS_TO_TICKS(500));  // Brief pause for stop to take effect
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
     
-    // Print summary
-    Serial.println("========================================");
-    Serial.println("COMMAND QUEUE TEST SUMMARY");
-    Serial.println("========================================");
-    Serial.print("Total Commands Sent: ");
-    Serial.println(passed + failed);
-    Serial.print("Successfully Sent: ");
-    Serial.println(passed);
-    Serial.print("Failed: ");
-    Serial.println(failed);
-    
-    if (failed == 0) {
-        Serial.println("\n✓ ALL COMMANDS SENT SUCCESSFULLY");
-    } else {
-        Serial.println("\n✗ SOME COMMANDS FAILED TO SEND");
-    }
-    Serial.println("========================================\n");
-    Serial.println("Note: Validation of commands is performed");
-    Serial.println("by the Motor Control Task, not in this test.\n");
+    Serial.println();
+    Serial.print("[TEST] Commands sent: ");
+    Serial.print(passed);
+    Serial.print("/");
+    Serial.println(num_tests);
 }
