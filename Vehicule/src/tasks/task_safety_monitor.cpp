@@ -13,24 +13,43 @@
 #include "../safety/timeout_monitor.h"
 #include "../safety/emergency_stop.h"
 
+// External flag from main.cpp indicating setup is complete
+extern volatile bool setupComplete;
+
 void task_safety_monitor(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_SAFETY_MONITOR);  // 50ms
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     Serial.println("[TASK_SAFETY] Safety monitor task started");
     
-    // TODO: Initialize watchdog
-    // TODO: Initialize timeout monitor
-    // TODO: Initialize emergency stop system
+    // Wait for setup to complete before starting monitoring
+    while (!setupComplete) {
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+    }
+    
+    Serial.println("[TASK_SAFETY] Initializing safety systems...");
+    // Initialize watchdog
+    watchdog_init(WATCHDOG_TIMEOUT_MS);
+    // Initialize timeout monitor
+    timeout_monitor_init(COMMAND_TIMEOUT_MS);
+    // Initialize emergency stop
+    emergency_stop_init();
+    Serial.println("[TASK_SAFETY] Safety systems ready");
     
     while (1) {
-        // TODO: Feed watchdog
-        // TODO: Check command timeout
-        // TODO: Check communication timeout
-        // TODO: Monitor task health
-        // TODO: Trigger emergency stop if needed
+        // Feed watchdog (prevents system reset)
+        watchdog_feed();
         
-        // For now, just maintain timing
+        // Check command timeout
+        timeout_monitor_check();
+        
+        // Check if emergency stop needs to be cleared
+        // This allows recovery after obstacle is removed
+        if (emergency_stop_is_active()) {
+            // Emergency stop is active - just monitor for clearing
+            // (clearing happens when task_sensor_fusion detects no obstacle)
+        }
+        
         vTaskDelayUntil(&lastWakeTime, period);
     }
 }

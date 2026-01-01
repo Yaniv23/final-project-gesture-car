@@ -14,23 +14,42 @@
 #include "../communication/command_protocol.h"
 #include "../safety/timeout_monitor.h"
 
+// External flag from main.cpp indicating setup is complete
+extern volatile bool setupComplete;
+
 void task_communication(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION);  // Use config value (100ms = 10 Hz)
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     Serial.println("[TASK_COMM] Communication task started");
     
-    // Initialize ESP-NOW (may already be initialized in setup, but that's OK)
-    if (!espnow_init()) {
+    // Wait for setup to complete before initializing
+    while (!setupComplete) {
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+    }
+    
+    #if SIMULATION_MODE
+    Serial.println("[TASK_COMM] Running in SIMULATION MODE - ESP-NOW disabled");
+    Serial.println("[TASK_COMM] Commands can be sent directly to xCommandQueue for testing");
+    #else
+    // Initialize ESP-NOW only in normal mode
+    if (!espnow_init(SIMULATION_MODE)) {
         Serial.println("[ERROR] ESP-NOW init failed!");
         vTaskDelete(NULL);
         return;
     }
-    Serial.println("[TASK_COMM] ESP-NOW ready - listening for commands");
+    Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
+    #endif
     
     uint8_t cmd_byte = 0;
     
     while (1) {
+        #if SIMULATION_MODE
+        // In simulation mode, just process commands from xCommandQueue
+        // Test tasks can directly send to xCommandQueue
+        // This task doesn't need to do anything except yield CPU time
+        vTaskDelayUntil(&lastWakeTime, period);
+        #else
         // Read command from ESP-NOW queue (ISR puts commands here)
         if (xQueueReceive(xESPNowQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
             // Validate command
@@ -49,5 +68,6 @@ void task_communication(void *pvParameters) {
         }
         
         vTaskDelayUntil(&lastWakeTime, period);
+        #endif
     }
 }

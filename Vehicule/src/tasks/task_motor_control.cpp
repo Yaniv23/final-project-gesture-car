@@ -17,11 +17,19 @@
 // Global motor driver instance (defined in main.cpp)
 extern MotorDriver motor_driver;
 
+// External flag from main.cpp indicating setup is complete
+extern volatile bool setupComplete;
+
 void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     Serial.println("[TASK_MOTOR] Motor control task started");
+    
+    // Wait for setup to complete before initializing
+    while (!setupComplete) {
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+    }
     
     // Initialize motion control with MotorDriver
     motion_init(&motor_driver);
@@ -86,13 +94,13 @@ void task_motor_control(void *pvParameters) {
                     motion_backward();
                     Serial.println("[MOTOR] BACKWARD");
                     break;
-                case CMD_STRAFE_LEFT:
-                    motion_strafe_left();
-                    Serial.println("[MOTOR] STRAFE_LEFT");
+                case CMD_SIDEWAY_LEFT:
+                    motion_sideway_left();
+                    Serial.println("[MOTOR] SIDEWAY_LEFT");
                     break;
-                case CMD_STRAFE_RIGHT:
-                    motion_strafe_right();
-                    Serial.println("[MOTOR] STRAFE_RIGHT");
+                case CMD_SIDEWAY_RIGHT:
+                    motion_sideway_right();
+                    Serial.println("[MOTOR] SIDEWAY_RIGHT");
                     break;
                 case CMD_ROTATE_CW:
                     motion_rotate_cw();
@@ -102,21 +110,21 @@ void task_motor_control(void *pvParameters) {
                     motion_rotate_ccw();
                     Serial.println("[MOTOR] ROTATE_CCW");
                     break;
-                case CMD_DIAGONAL_FORWARD_LEFT:
-                    motion_diagonal_forward_left();
-                    Serial.println("[MOTOR] DIAGONAL_FORWARD_LEFT");
+                case CMD_DIAGONAL_315:
+                    motion_diagonal_315();
+                    Serial.println("[MOTOR] DIAGONAL_315");
                     break;
-                case CMD_DIAGONAL_FORWARD_RIGHT:
-                    motion_diagonal_forward_right();
-                    Serial.println("[MOTOR] DIAGONAL_FORWARD_RIGHT");
+                case CMD_DIAGONAL_45:
+                    motion_diagonal_45();
+                    Serial.println("[MOTOR] DIAGONAL_45");
                     break;
-                case CMD_DIAGONAL_BACKWARD_LEFT:
-                    motion_diagonal_backward_left();
-                    Serial.println("[MOTOR] DIAGONAL_BACKWARD_LEFT");
+                case CMD_DIAGONAL_225:
+                    motion_diagonal_225();
+                    Serial.println("[MOTOR] DIAGONAL_225");
                     break;
-                case CMD_DIAGONAL_BACKWARD_RIGHT:
-                    motion_diagonal_backward_right();
-                    Serial.println("[MOTOR] DIAGONAL_BACKWARD_RIGHT");
+                case CMD_DIAGONAL_135:
+                    motion_diagonal_135();
+                    Serial.println("[MOTOR] DIAGONAL_135");
                     break;
                 case CMD_PIVOT_LEFT:
                     motion_pivot_left();
