@@ -241,13 +241,6 @@ void loop() {
     // low-priority background tasks
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    // Optional: Print free heap periodically for debugging
-    static uint32_t lastPrint = 0;
-    uint32_t now = millis();
-    if (now - lastPrint > 5000) {
-        Serial.println("[LOOP] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
-        lastPrint = now;
-    }
 }
 
 // ============================================================================
