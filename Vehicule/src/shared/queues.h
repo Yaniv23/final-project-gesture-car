@@ -1,9 +1,9 @@
 #ifndef SHARED_QUEUES_H
 #define SHARED_QUEUES_H
 
-#include <FreeRTOS.h>
-#include <queue.h>
-#include <semphr.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
 #include "types.h"
 
 /**

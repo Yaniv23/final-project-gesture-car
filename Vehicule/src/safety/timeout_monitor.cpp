@@ -4,6 +4,7 @@
  */
 
 #include "timeout_monitor.h"
+#include <Arduino.h>
 
 static uint32_t timeout_ms_ = 500;
 static uint32_t last_command_time_ = 0;

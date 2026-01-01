@@ -41,3 +41,5 @@ bool isValidCommand(uint8_t cmd_byte);
 
 
 // End of command_protocol.h
+
+#endif // COMMAND_PROTOCOL_H

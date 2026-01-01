@@ -6,12 +6,13 @@
  */
 
 #include <Arduino.h>
-#include <FreeRTOS.h>
-#include <task.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "../config.h"
 #include "../drivers/servo_driver.h"
 #include "../drivers/ultrasonic_driver.h"
 #include "../safety/emergency_stop.h"
+#include "../control/motion_control.h"
 
 // Servo and sensor instances
 static ServoDriver servo;

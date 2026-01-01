@@ -5,8 +5,8 @@
  */
 
 #include <Arduino.h>
-#include <FreeRTOS.h>
-#include <task.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Configuration
 #include "config.h"
@@ -35,7 +35,7 @@ MotorDriver motor_driver;
 void setup() {
     // Initialize Serial for debugging
     Serial.begin(SERIAL_BAUD_RATE);
-    HAL_Timer_DelayMs(1000);  // Wait for Serial Monitor to connect
+    delay(1000);  // Wait for Serial Monitor to connect
     
     Serial.println("\n========================================");
     Serial.println("Gesture Car - ESP32 Vehicle Controller");
@@ -149,7 +149,7 @@ void loop() {
     // All work is done in tasks created in setup()
     
     // Feed watchdog timer (safety mechanism)
-    HAL_Timer_WatchdogFeed();
+    watchdog_feed();
     
     // This delay ensures loop() doesn't consume CPU
     // In production, you might remove loop() entirely or use it for
@@ -158,7 +158,7 @@ void loop() {
     
     // Optional: Print free heap periodically for debugging
     static uint32_t lastPrint = 0;
-    uint32_t now = HAL_Timer_GetMillis();
+    uint32_t now = millis();
     if (now - lastPrint > 5000) {
         Serial.println("[LOOP] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
         lastPrint = now;

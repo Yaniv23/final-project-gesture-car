@@ -9,8 +9,8 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_now.h>
-#include <FreeRTOS.h>
-#include <queue.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include "../shared/queues.h"
 
 /**
@@ -20,7 +20,7 @@
  * @param len Length of received data
  * @note This is called from ISR context - keep it minimal!
  */
-void onESPNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *data, int len) {
+void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     // Expect exactly 1 byte (binary command)
     if (len != sizeof(uint8_t)) {
         // Invalid packet size - ignore
@@ -39,8 +39,8 @@ void onESPNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *data, i
     // This is safe because we're using xQueueSendFromISR
     if (xESPNowQueue != NULL) {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        BaseType_t result = xQueueSendFromISR(xESPNowQueue, &cmd_byte, &xHigherPriorityTaskWoken);
-        
+        xQueueSendFromISR(xESPNowQueue, &cmd_byte, &xHigherPriorityTaskWoken);
+
         // If queue is full, command is dropped (but that's OK - we'll get the next one)
         // Yield if a higher priority task was woken
         if (xHigherPriorityTaskWoken) {
