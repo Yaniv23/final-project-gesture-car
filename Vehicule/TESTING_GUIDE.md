@@ -139,16 +139,16 @@ For testing, you can send these bytes via ESP-NOW:
 0x00 = STOP
 0x01 = FORWARD
 0x02 = BACKWARD
-0x03 = STRAFE_LEFT
-0x04 = STRAFE_RIGHT
+0x03 = SIDEWAY_LEFT
+0x04 = SIDEWAY_RIGHT
 0x05 = ROTATE_CW
 0x06 = ROTATE_CCW
 
 // Diagonal movements
-0x07 = DIAGONAL_FORWARD_LEFT
-0x08 = DIAGONAL_FORWARD_RIGHT
-0x09 = DIAGONAL_BACKWARD_LEFT
-0x0A = DIAGONAL_BACKWARD_RIGHT
+0x07 = DIAGONAL_315 (forward-left)
+0x08 = DIAGONAL_45 (forward-right)
+0x09 = DIAGONAL_225 (backward-left)
+0x0A = DIAGONAL_135 (backward-right)
 
 // Pivot movements
 0x0B = PIVOT_LEFT
