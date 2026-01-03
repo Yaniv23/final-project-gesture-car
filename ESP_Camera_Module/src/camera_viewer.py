@@ -59,6 +59,9 @@ def main():
                 break
             continue
 
+        # Flip the image horizontally (mirror effect)
+        frame = cv2.flip(frame, 0)
+
         cv2.imshow(window_name, frame)
 
         key = cv2.waitKey(1) & 0xFF
