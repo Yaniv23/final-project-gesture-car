@@ -60,7 +60,7 @@ def main():
             continue
 
         # Flip the image horizontally (mirror effect)
-        frame = cv2.flip(frame, 0)
+        frame = cv2.flip(frame, 0) 
 
         cv2.imshow(window_name, frame)
 
@@ -74,7 +74,12 @@ def main():
 
     print("\n[INFO] Closing viewer...")
     cap.release()
-    cv2.destroyAllWindows()
+    # Only destroy this specific window, not all windows
+    try:
+        cv2.destroyWindow(window_name)
+    except:
+        pass
+    # Don't call destroyAllWindows() as it closes other windows too
 
 
 if __name__ == "__main__":

@@ -89,7 +89,7 @@ static esp_err_t index_handler(httpd_req_t *req) {
       "<html>"
       "<head><meta charset='UTF-8'><title>ESP32-S3 Camera</title></head>"
       "<body style='margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh;'>"
-      "<img src='/stream' style='max-width:100%; height:auto;' />"
+      "<img src='/stream' style='width:90vw; height:auto; max-height:90vh; object-fit:contain;' />"
       "</body>"
       "</html>";
 
@@ -148,8 +148,8 @@ bool initCamera() {
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
 
@@ -167,6 +167,17 @@ bool initCamera() {
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x\n", err);
     return false;
+  }
+
+  // Configure camera orientation
+  // Adjust these based on your camera mounting:
+  // - set_hmirror(true) = flip left-right (mirror effect)
+  // - set_vflip(true) = flip upside-down
+  sensor_t *s = esp_camera_sensor_get();
+  if (s != nullptr) {
+    s->set_hmirror(s, true);   // Horizontal mirror (left-right flip)
+    s->set_vflip(s, true);     // Vertical flip (upside-down flip)
+    Serial.println("Camera orientation: horizontal mirror + vertical flip enabled");
   }
 
   Serial.println("Camera init OK");
