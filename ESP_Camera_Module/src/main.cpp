@@ -5,8 +5,8 @@
 
 // =================== USER SETTINGS ===================
 // Change these to match your WiFi network
-const char *WIFI_SSID     = "TP-Link_IoT_4720";
-const char *WIFI_PASSWORD = "88628257";
+const char *WIFI_SSID     = "iPhone de Yaniv";
+const char *WIFI_PASSWORD = "12345678";
 
 // =================== CAMERA PINS (OV2640 on ESP32-S3) ===================
 // These pins are taken from your existing S3 camera config (camerapins.h)

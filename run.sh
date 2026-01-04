@@ -67,3 +67,4 @@ python "$PROJECT_ROOT/Hand_Tracking/Hand_Tracker.py"
 echo ""
 echo "Shutting down..."
 
+
