@@ -25,4 +25,20 @@ bool espnow_init();
  */
 bool espnow_get_mac_string(char* mac_str, size_t len);
 
+/**
+ * @brief Temperature message structure for ESP-NOW
+ */
+struct temp_message {
+    float temperature;  // Temperature in Celsius
+    uint8_t state;      // 0=normal, 1=warning, 2=critical
+};
+
+/**
+ * @brief Send temperature data via ESP-NOW to sender
+ * @param temperature Temperature value in Celsius
+ * @param state Temperature state (0=normal, 1=warning, 2=critical)
+ * @return true if sent successfully, false otherwise
+ */
+bool espnow_send_temperature(float temperature, uint8_t state);
+
 #endif // ESPNOW_HANDLER_H

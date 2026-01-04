@@ -86,6 +86,15 @@
 #define EMERGENCY_STOP_DISTANCE_CM 10    // Stop if obstacle < 10cm
 
 // ============================================================================
+// Temperature Monitoring Settings
+// ============================================================================
+#define TEMP_NORMAL_MAX          60.0f   // °C - Below this, no action
+#define TEMP_WARNING_MIN         60.0f   // °C - Start sending temperature
+#define TEMP_CRITICAL_MIN         70.0f   // °C - Emergency stop
+#define TEMP_READ_INTERVAL_NORMAL 3000   // Read every 3 seconds when normal
+#define TEMP_READ_INTERVAL_ALERT  300    // Read every 300ms when warning/critical
+
+// ============================================================================
 // Kinematic Parameters (shared with Person 2)
 // ============================================================================
 // These will be used by Person 2's kinematics code

@@ -48,6 +48,10 @@ current_display = ""
 stable_counter = 0
 stable_threshold = 10  # Frames needed to confirm a new label
 
+# Temperature tracking
+current_temp = None
+temp_state = None  # "WARNING" or "CRITICAL"
+
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
         return "Sideway_Right"
@@ -239,7 +243,22 @@ def main():
                 if ser.in_waiting:
                     line = ser.readline().decode('utf-8').strip()
                     if line:
-                        print("ESP32:", line)
+                        # Check if this is a temperature message
+                        if line.startswith("TEMP:"):
+                            try:
+                                # Parse temperature message: TEMP:XX.X:WARNING or TEMP:XX.X:CRITICAL
+                                parts = line.split(":")
+                                if len(parts) == 3:
+                                    temp_value = float(parts[1])
+                                    temp_state_str = parts[2]
+                                    current_temp = temp_value
+                                    temp_state = temp_state_str
+                                    print(f"Temperature: {temp_value:.1f}°C ({temp_state_str})")
+                            except (ValueError, IndexError) as e:
+                                print(f"Error parsing temperature: {line}, {e}")
+                        else:
+                            # Regular ESP32 message
+                            print("ESP32:", line)
             except Exception as e:
                 print("Serial read error:", e)
 
@@ -254,6 +273,33 @@ def main():
         }.get(current_display, (0, 255, 255))
 
         cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        
+        # Display temperature in bottom right corner
+        if current_temp is not None and temp_state is not None:
+            temp_text = f"Temp: {current_temp:.1f}°C ({temp_state})"
+            # Choose color based on state
+            if temp_state == "CRITICAL":
+                temp_color = (0, 0, 255)  # Red
+            else:  # WARNING
+                temp_color = (0, 255, 255)  # Yellow
+            
+            # Get text size to position in bottom right
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            thickness = 2
+            (text_width, text_height), baseline = cv2.getTextSize(temp_text, font, font_scale, thickness)
+            
+            # Position: bottom right with padding
+            x_pos = w - text_width - 10
+            y_pos = h - 10
+            
+            # Draw text with background for better visibility
+            cv2.rectangle(frame, 
+                         (x_pos - 5, y_pos - text_height - 5), 
+                         (x_pos + text_width + 5, y_pos + baseline + 5), 
+                         (0, 0, 0), -1)  # Black background
+            
+            cv2.putText(frame, temp_text, (x_pos, y_pos), font, font_scale, temp_color, thickness)
         
         # Display frame
         try:

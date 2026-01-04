@@ -9,6 +9,30 @@ typedef struct struct_message {
 
 struct_message outgoingMsg;
 
+// Temperature message structure (must match vehicle ESP32)
+struct temp_message {
+  float temperature;  // Temperature in Celsius
+  uint8_t state;      // 0=normal, 1=warning, 2=critical
+};
+
+// Receive callback for temperature messages
+void onReceiveTemp(const uint8_t *mac, const uint8_t *data, int len) {
+  // Check if this is a temperature message (5 bytes: 4 bytes float + 1 byte state)
+  if (len == sizeof(temp_message)) {
+    temp_message temp_msg;
+    memcpy(&temp_msg, data, sizeof(temp_msg));
+    
+    // Forward temperature via Serial
+    const char* state_str = (temp_msg.state == 1) ? "WARNING" : "CRITICAL";
+    Serial.print("TEMP:");
+    Serial.print(temp_msg.temperature, 1);
+    Serial.print(":");
+    Serial.print(state_str);
+    Serial.println();
+  }
+  // Ignore other message types (commands are one-way from sender to receiver)
+}
+
 void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
@@ -21,6 +45,10 @@ void setup() {
   esp_now_register_send_cb([](const uint8_t *mac, esp_now_send_status_t status) {
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "✅ Sent" : "❌ Failed");
   });
+
+  // Register receive callback for temperature messages
+  // Using function pointer for compatibility
+  esp_now_register_recv_cb(onReceiveTemp);
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverMAC, 6);

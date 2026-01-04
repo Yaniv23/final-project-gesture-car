@@ -13,4 +13,9 @@ void emergency_stop_trigger();
 void emergency_stop_clear();
 bool emergency_stop_is_active();
 
+// Temperature-based emergency stop
+void emergency_stop_trigger_temp();
+void emergency_stop_clear_temp();
+bool emergency_stop_is_temp_active();
+
 #endif // EMERGENCY_STOP_H
