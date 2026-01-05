@@ -1,208 +1,380 @@
 # Gesture-Controlled Car Project
 
-A hands-on project that connects a webcam + MediaPipe hand-gesture tracker to ESP32 microcontrollers to control a mecanum-wheeled car with onboard camera streaming.
+A hands-on robotics project that lets you control a mecanum-wheeled car using hand gestures! The system uses a webcam to track your hand movements, sends commands wirelessly to an ESP32-controlled vehicle, and streams live video from an onboard camera.
+
+## What This Project Does
+
+In simple terms: **You wave your hand in front of a webcam, and the car moves accordingly!**
+
+- 👋 **Hand Tracking**: Your PC uses a webcam and MediaPipe to recognize hand gestures
+- 📡 **Wireless Control**: Commands are sent via ESP-NOW (a fast wireless protocol) to the car
+- 🚗 **Vehicle Control**: An ESP32 on the car receives commands and controls 4 motors for mecanum wheel movement
+- 📹 **Live Video**: An ESP32-S3 camera module streams video back to your PC over WiFi
 
 ## System Architecture
 
-The project consists of three main components:
+```mermaid
+graph TB
+    subgraph PC["PC (Python)"]
+        HandTracker["Hand Tracking<br/>(MediaPipe)"]
+        CameraViewer["Camera Viewer<br/>(OpenCV)"]
+    end
+    
+    subgraph ESP32Sender["ESP32 Sender"]
+        Sender["ESP32 Sender"]
+    end
+    
+    subgraph ESP32Camera["ESP32-S3 Camera"]
+        Camera["ESP32-S3 Camera"]
+    end
+    
+    subgraph Vehicle["ESP32 Vehicle Controller"]
+        Controller["Vehicle Controller"]
+        Motors["Motors"]
+        Servo["Servo"]
+        Ultrasonic["Ultrasonic"]
+    end
+    
+    HandTracker -->|"USB Serial<br/>(115200 baud)"| Sender
+    CameraViewer <-->|"WiFi HTTP<br/>(MJPEG)"| Camera
+    Sender -->|"ESP-NOW<br/>(Wireless)"| Controller
+    Controller --> Motors
+    Controller --> Servo
+    Controller --> Ultrasonic
+```
 
-1. **PC Module** - Runs hand tracking and sends control commands
-2. **Vehicle Controller** - ESP32 on the car that receives commands and controls motors + transmission
-3. **Camera Module** - ESP32-S3 on the car that streams video to the PC
+### Communication Flow
 
-## Communication Architecture
+1. **PC → ESP32 Sender**: USB Serial (115200 baud)
+2. **ESP32 Sender → Vehicle**: ESP-NOW (2.4GHz wireless)
+3. **ESP32-S3 Camera → PC**: WiFi HTTP (MJPEG stream on port 80)
 
+## Hardware Requirements
 
-### Connection Details
+### PC Side
+- **Computer**: Windows, Linux, or macOS
+- **Webcam**: USB webcam (built-in or external)
+- **USB Port**: For connecting ESP32 sender
+- **Python**: Version 3.7+ (3.10 recommended)
+- **WiFi**: For camera stream (same network as ESP32-S3)
 
-| Connection | Protocol | Details |
-|------------|----------|---------|
-| **PC → ESP32 Sender** | USB Serial | Baud rate: 115200, Port: Configured in `Hand_Tracking/constant.py` |
-| **ESP32 Sender → Vehicle Controller** | ESP-NOW | Wireless 2.4GHz, MAC address configured in sender code |
-| **ESP32-S3 Camera → PC** | WiFi HTTP | MJPEG stream on port 80, IP address displayed in Serial Monitor |
+### ESP32 Components
 
-## Main Project Components
+#### ESP32 Sender
+- ESP32 development board (e.g., ESP32 DevKit)
+- USB cable for PC connection
 
-### `Hand_Tracking/`
-The PC-side hand gesture recognition system.
+#### ESP32 Vehicle Controller
+- ESP32 development board
+- **Motors**: 4x DC motors with mecanum wheels
+- **Motor Drivers**: 2x L298N motor driver modules
+- **Power Supply**: Adequate for motors (e.g., 7.4V battery pack)
+- **Servo Motor**: For obstacle scanning (optional)
+- **Ultrasonic Sensor**: HC-SR04 for obstacle detection
+- **Wiring**: Jumper wires, breadboard/protoboard
 
-- **`Hand_Tracker.py`** - Main Python script that:
-  - Captures video from webcam using OpenCV
-  - Uses MediaPipe to detect hand landmarks and gestures
-  - Recognizes gestures: Forward, Backward, Stop, rotate_cw, rotate_ccw, Sideway_Left, Sideway_Right, diagonal movements, Center
-  - Applies stability filtering to prevent command jitter
-  - Sends gesture commands via USB Serial to ESP32 sender
-  - Configure serial port in `constant.py`
+#### ESP32-S3 Camera Module
+- ESP32-S3 development board (with camera support)
+- OV2640 camera module
+- WiFi access (for video streaming)
 
-- **`constant.py`** - Configuration file for serial communication (COM port and baud rate)
+### Pin Connections
 
-- **`serial_monitor.py`** - Debugging tool to monitor serial communication
+See component-specific documentation for detailed pin assignments:
+- [Vehicle Controller Pins](Vehicule/README.md#hardware-connections)
+- [Camera Module Pins](ESP_Camera_Module/README.md#hardware-setup)
 
-- **`requirements.txt`** - Python dependencies (MediaPipe, OpenCV, pyserial)
+## Software Dependencies
 
-### `Vehicule_Controller/`
-The main ESP32 controller on the car.
-
-- **`Vehicule_Controller.ino`** - ESP32 sketch that:
-  - Receives ESP-NOW commands from the sender ESP32
-  - Parses string commands (e.g., "Forward", "Stop", "rotate_cw") into integer codes
-  - Controls 4-motor mecanum drive system (L298N drivers)
-  - Controls servo motor for scanning
-  - Reads ultrasonic distance sensor (HC-SR04)
-  - Supports all movement types: forward, backward, strafe, rotate, diagonal, pivot
-
-**Motor Control:**
-- Front Right, Front Left, Back Right, Back Left wheels
-- PWM speed control (slow: 150, fast: 255)
-- Individual wheel control for mecanum movement
-
-**Sensor Integration:**
-- Servo sweeps 0-60° for obstacle scanning
-- Ultrasonic sensor detects obstacles within 20cm threshold
-
-### `ESP_Camera_Module/`
-Onboard camera system for video streaming.
-
-- **`src/main.cpp`** - ESP32-S3 sketch that:
-  - Initializes OV2640 camera module
-  - Connects to WiFi network (configure SSID/password in code)
-  - Serves MJPEG video stream via HTTP on port 80
-  - Provides web interface at root URL (`http://<ESP32_IP>/`)
-  - Stream endpoint: `http://<ESP32_IP>/stream`
-
-- **`src/camera_viewer.py`** - PC-side Python viewer that:
-  - Connects to ESP32-S3 camera stream via HTTP
-  - Displays live video feed using OpenCV
-  - Configure ESP32 IP address in script or via `--ip` argument
-
-## Testing/Development Folders
-
-These folders contain individual test sketches for developing and debugging specific functions separately:
-
-### `Transmission/`
-- **`Sender_Code/`** - ESP32 ESP-NOW sender (used in main system)
-- **`Reciver_Code/`** - ESP32 ESP-NOW receiver test example
-- **`Wifi_ESP32_Com_Serial/`** - WiFi HTTP bridge test (alternative to ESP-NOW)
-
-### `Motors/`
-- **`Motor_Control/`** - Basic motor control test sketch
-- **`Motor_Control_Serial_Com/`** - Serial command parser test
-- **`Motor_Test/`** - Simple motor pin toggle test
-- **`Motor_joystick_connection_test/`** - Joystick input mapping test
-
-### `Sensors/`
-- **`Servo_and_Sensor/`** - Servo and ultrasonic sensor test sketch
-
-## Setup Instructions
-
-### 1. PC Setup (Hand Tracking)
-
+### Python Packages
+Install Python dependencies for hand tracking:
 ```bash
 cd Hand_Tracking
 pip install -r requirements.txt
 ```
 
-Edit `constant.py` to set your ESP32 sender's COM port:
+Required packages:
+- `opencv-python>=4.5.0` - Computer vision
+- `mediapipe==0.10.9` - Hand tracking
+- `pyserial>=3.5` - Serial communication
+
+### PlatformIO
+Install PlatformIO for ESP32 development:
+```bash
+pip install platformio
+```
+
+PlatformIO is used to build and upload code to:
+- ESP32 Vehicle Controller
+- ESP32-S3 Camera Module
+
+### Arduino IDE (Alternative)
+The ESP32 sender code can be uploaded using Arduino IDE if preferred.
+
+## Quick Start Guide
+
+### Step 1: Install Dependencies
+
+**Python packages:**
+```bash
+cd Hand_Tracking
+python -m venv venv  # Optional: create virtual environment
+source venv/bin/activate  # Linux/Mac, or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+```
+
+**PlatformIO:**
+```bash
+pip install platformio
+```
+
+### Step 2: Configure ESP32 Sender
+
+1. Connect ESP32 sender to PC via USB
+2. Find the COM port:
+   - **Linux**: `/dev/ttyUSB0` or `/dev/ttyACM0`
+   - **Windows**: `COM3`, `COM11`, etc. (check Device Manager)
+   - **macOS**: `/dev/cu.usbserial-*`
+3. Upload sender code (see [Sender Documentation](Transmission/Sender_Code/README.md))
+
+### Step 3: Build and Upload Vehicle Controller
+
+```bash
+cd Vehicule
+# Edit platformio.ini to set your upload port
+pio run -t upload
+```
+
+**Important**: Note the MAC address printed in Serial Monitor - you'll need it for the sender!
+
+### Step 4: Build and Upload Camera Module
+
+```bash
+cd ESP_Camera_Module
+# Edit src/main.cpp to set WiFi SSID and password
+# Edit platformio.ini to set your upload port
+pio run -t upload
+```
+
+**Important**: Note the IP address printed in Serial Monitor!
+
+### Step 5: Configure Hand Tracking
+
+Edit `Hand_Tracking/constant.py`:
 ```python
-COM_PORT = 'COM11'  # Change to your port (e.g., '/dev/ttyUSB0' on Linux)
+COM_PORT = '/dev/ttyACM0'  # Your ESP32 sender port
 BAUD_RATE = 115200
 ```
 
-### 2. ESP32 Sender Setup
+### Step 6: Configure Sender MAC Address
 
-1. Upload `Transmission/Sender_Code/Sender_Code.ino` to an ESP32
-2. Connect ESP32 to PC via USB
-3. Update receiver MAC address in sender code (line 4) to match Vehicle Controller MAC
-4. Open Serial Monitor (115200 baud) to verify connection
-
-### 3. Vehicle Controller Setup
-
-1. Upload `Vehicule_Controller/Vehicule_Controller.ino` to ESP32 on car
-2. Wire motors, servo, and sensor according to pin definitions in code
-3. Open Serial Monitor (115200 baud) to see MAC address
-4. Copy MAC address to ESP32 sender code
-
-### 4. Camera Module Setup
-
-1. Upload `ESP_Camera_Module/src/main.cpp` to ESP32-S3
-2. Configure WiFi SSID and password in code (lines 8-9)
-3. Open Serial Monitor to see assigned IP address
-4. Update IP in `camera_viewer.py` or use `--ip` argument
-
-## Running the System
-
-### Start Hand Tracking
-```bash
-cd Hand_Tracking
-python Hand_Tracker.py
+Edit `Transmission/Sender_Code/Sender_Code.ino`:
+```cpp
+uint8_t receiverMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};  // Vehicle MAC
 ```
 
-The script will:
-- Open webcam feed
-- Detect hand gestures
-- Send commands to ESP32 sender via Serial
-- Display recognized gesture on screen
+### Step 7: Run the System
 
-### View Camera Stream
+**Option 1: Use the run script**
 ```bash
+./run.sh --ip 192.168.1.100  # Replace with your camera IP
+```
+
+**Option 2: Manual launch**
+```bash
+# Terminal 1: Start hand tracking
+cd Hand_Tracking
+python Hand_Tracker.py
+
+# Terminal 2: View camera stream
 cd ESP_Camera_Module/src
-python camera_viewer.py
-# Or with custom IP:
 python camera_viewer.py --ip 192.168.1.100
 ```
 
-## Gesture Commands
+## Building and Uploading
 
-The hand tracker recognizes the following gestures:
+### Vehicle Controller
 
-| Gesture | Command String | Motor Action |
-|---------|---------------|--------------|
-| Closed fist | `Stop` | All motors stop |
-| Index finger up | `Forward` | Move forward |
-| Index finger down | `Backward` | Move backward |
-| Hand open, centered | `Center` | Stop (neutral) |
-| Thumb-index circle (right) | `rotate_cw` | Rotate clockwise |
-| Thumb-index circle (left) | `rotate_ccw` | Rotate counter-clockwise |
-| Hand position-based | `Sideway_Left/Right` | Strafe left/right |
-| Hand position-based | `diagonal_forward_left/right` | Diagonal forward |
-| Hand position-based | `diagonal_backward_left/right` | Diagonal backward |
+```bash
+cd Vehicule
+
+# Build only
+pio run
+
+# Build and upload
+pio run -t upload
+
+# Monitor serial output
+pio device monitor
+```
+
+**Configuration**: Edit `src/config.h` for pin assignments and motor speeds.
+
+### Camera Module
+
+```bash
+cd ESP_Camera_Module
+
+# Build and upload
+pio run -t upload
+
+# Monitor serial output (to see IP address)
+pio device monitor
+```
+
+**Configuration**: Edit `src/main.cpp` for WiFi credentials.
+
+### Sender
+
+**Using PlatformIO** (if you create a platformio.ini):
+```bash
+cd Transmission/Sender_Code
+pio run -t upload
+```
+
+**Using Arduino IDE**:
+1. Open `Sender_Code.ino` in Arduino IDE
+2. Select ESP32 board
+3. Set COM port
+4. Click Upload
+
+## Running the System
+
+### Launch Sequence
+
+1. **Power on the vehicle** (ESP32 controller + motors)
+2. **Connect ESP32 sender** to PC via USB
+3. **Power on ESP32-S3 camera** (wait for WiFi connection)
+4. **Start hand tracking**:
+   ```bash
+   cd Hand_Tracking
+   python Hand_Tracker.py
+   ```
+5. **View camera stream** (optional):
+   ```bash
+   cd ESP_Camera_Module/src
+   python camera_viewer.py --ip <CAMERA_IP>
+   ```
+
+### Gesture Commands
+
+| Gesture | Command | Vehicle Action |
+|---------|---------|----------------|
+| 👊 Closed fist | `Stop` | All motors stop |
+| 👆 Index finger up | `Forward` | Move forward |
+| 👇 Index finger down | `Backward` | Move backward |
+| ✋ Open hand (center) | `Center` | Stop (neutral) |
+| 🔄 Circle (right) | `rotate_cw` | Rotate clockwise |
+| 🔄 Circle (left) | `rotate_ccw` | Rotate counter-clockwise |
+| Hand position | `Sideway_Left/Right` | Strafe left/right |
+| Hand position | `diagonal_*` | Diagonal movements |
+
+## Component Documentation
+
+For detailed information on each component:
+
+- **[Vehicle Controller](Vehicule/README.md)** - ESP32 vehicle control system
+  - [Technical Details](docs/VEHICLE_CONTROLLER.md) - Architecture, FreeRTOS, protocols
+- **[Hand Tracking](Hand_Tracking/README.md)** - PC-side gesture recognition
+- **[Camera Module](ESP_Camera_Module/README.md)** - ESP32-S3 video streaming
+- **[ESP32 Sender](Transmission/Sender_Code/README.md)** - Wireless command bridge
+- **[PC Side Components](docs/PC_SIDE_COMPONENTS.md)** - Technical overview
 
 ## Troubleshooting
 
 ### Hand Tracking Issues
-- **No serial connection**: Check COM port in `constant.py` matches your ESP32 sender
-- **Commands not sending**: Verify ESP32 sender is connected and Serial Monitor shows "🟢 Sender ready"
-- **Gesture not recognized**: Ensure good lighting and clear hand visibility
+
+**Problem**: No serial connection
+- **Solution**: Check `COM_PORT` in `Hand_Tracking/constant.py` matches your ESP32 sender port
+- **Check**: ESP32 sender is connected and Serial Monitor shows "🟢 Sender ready"
+
+**Problem**: Gesture not recognized
+- **Solution**: Ensure good lighting and clear hand visibility
+- **Check**: Webcam is working (test with other applications)
+
+**Problem**: Commands not sending
+- **Solution**: Verify ESP32 sender Serial Monitor shows commands being received
+- **Check**: Serial connection is stable (try reconnecting USB)
 
 ### ESP-NOW Communication Issues
-- **Commands not received**: Verify MAC addresses match between sender and receiver
-- **Connection fails**: Ensure both ESP32s are in WiFi STA mode
-- **Check Serial Monitor**: Vehicle Controller prints received commands with MAC address
-ands are being received (check Serial Monitor)
 
-## Hardware Requirements
+**Problem**: Commands not received by vehicle
+- **Solution**: Verify MAC addresses match between sender and receiver
+- **Check**: Both ESP32s are powered on and in WiFi STA mode
+- **Check**: Vehicle Serial Monitor shows received commands
 
-### PC
-- Webcam (USB)
-- Python 3.7+
-- USB port for ESP32 sender
+**Problem**: Connection fails
+- **Solution**: Ensure both ESP32s are on the same WiFi channel (default: 0)
+- **Check**: No interference from other 2.4GHz devices
 
-### Vehicle Controller (ESP32)
-- ESP32 development board
-- 4x DC motors with L298N drivers (or similar)
-- Servo motor (for scanning)
-- HC-SR04 ultrasonic sensor
-- Power supply for motors
+### Camera Stream Issues
 
-### Camera Module (ESP32-S3)
-- ESP32-S3 development board
-- OV2640 camera module
-- WiFi network access
+**Problem**: Cannot connect to camera stream
+- **Solution**: Verify ESP32-S3 IP address from Serial Monitor
+- **Check**: PC and ESP32-S3 are on the same WiFi network
+- **Test**: Open `http://<ESP32_IP>/stream` in browser
 
-### ESP32 Sender
-- ESP32 development board
-- USB connection to PC
+**Problem**: Stream is slow or laggy
+- **Solution**: Check WiFi signal strength
+- **Check**: Reduce camera resolution in code if needed
+
+### Vehicle Control Issues
+
+**Problem**: Motors don't move
+- **Solution**: Check pin connections in `Vehicule/src/config.h`
+- **Check**: Motor driver power supply is adequate
+- **Check**: Common PWM pin (pin 2) is connected correctly
+
+**Problem**: Wrong movement direction
+- **Solution**: Swap IN1/IN2 pins in motor configuration
+- **Check**: Motor wiring matches pin assignments
+
+**Problem**: Emergency stop always active
+- **Solution**: Check ultrasonic sensor distance (should be > 10cm normally)
+- **Check**: `EMERGENCY_STOP_DISTANCE_CM` in `config.h`
+
+## Project Structure
+
+```
+final-project-gesture-car/
+├── README.md                    # This file
+├── Hand_Tracking/              # PC-side hand gesture recognition
+│   ├── Hand_Tracker.py         # Main tracking script
+│   ├── constant.py             # Serial port configuration
+│   └── requirements.txt        # Python dependencies
+├── Vehicule/                   # ESP32 vehicle controller
+│   ├── src/                    # Source code
+│   ├── platformio.ini         # Build configuration
+│   └── README.md              # Vehicle documentation
+├── ESP_Camera_Module/          # ESP32-S3 camera streaming
+│   ├── src/
+│   │   ├── main.cpp           # Camera firmware
+│   │   └── camera_viewer.py   # PC viewer
+│   └── README.md              # Camera documentation
+├── Transmission/               # Communication modules
+│   └── Sender_Code/           # ESP32 sender
+│       └── README.md          # Sender documentation
+└── docs/                       # Technical documentation
+    ├── VEHICLE_CONTROLLER.md  # Vehicle technical details
+    └── PC_SIDE_COMPONENTS.md  # PC components technical details
+```
 
 ## License
 
 No license is included in this repository. Add an appropriate `LICENSE` file if you want to publish or share this project under a specific license.
+
+## Contributing
+
+This is a learning project. Feel free to fork, modify, and improve!
+
+## Support
+
+For issues and questions:
+1. Check the troubleshooting section above
+2. Review component-specific documentation
+3. Check Serial Monitor output for error messages
+4. Verify hardware connections match documentation
+
+---
+
+**Happy Gesturing! 🚗👋**
