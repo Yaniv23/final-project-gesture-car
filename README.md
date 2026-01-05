@@ -35,12 +35,33 @@ graph TB
         Ultrasonic["Ultrasonic"]
     end
     
-    HandTracker -->|"USB Serial<br/>(115200 baud)"| Sender
-    CameraViewer <-->|"WiFi HTTP<br/>(MJPEG)"| Camera
-    Sender -->|"ESP-NOW<br/>(Wireless)"| Controller
+    USBProtocol["USB Serial<br/>(115200 baud)"]
+    WiFiProtocol["WiFi HTTP<br/>(MJPEG)"]
+    ESPNOWProtocol["ESP-NOW<br/>(Wireless)"]
+    
+    HandTracker --> USBProtocol
+    USBProtocol --> Sender
+    CameraViewer <--> WiFiProtocol
+    WiFiProtocol <--> Camera
+    Sender --> ESPNOWProtocol
+    ESPNOWProtocol --> Controller
     Controller --> Motors
     Controller --> Servo
     Controller --> Ultrasonic
+
+    classDef pcStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
+    classDef esp32Style fill:#00C853,stroke:#007E33,stroke-width:3px,color:#fff
+    classDef cameraStyle fill:#FF6F00,stroke:#E65100,stroke-width:3px,color:#fff
+    classDef vehicleStyle fill:#9C27B0,stroke:#6A1B9A,stroke-width:3px,color:#fff
+    classDef hardwareStyle fill:#F44336,stroke:#C62828,stroke-width:2px,color:#fff
+    classDef commStyle fill:#FFD700,stroke:#B8860B,stroke-width:3px,color:#000
+    
+    class HandTracker,CameraViewer pcStyle
+    class Sender esp32Style
+    class Camera cameraStyle
+    class Controller vehicleStyle
+    class Motors,Servo,Ultrasonic hardwareStyle
+    class USBProtocol,WiFiProtocol,ESPNOWProtocol commStyle
 ```
 
 ### Communication Flow
