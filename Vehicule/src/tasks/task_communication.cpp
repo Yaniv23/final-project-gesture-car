@@ -10,9 +10,13 @@
 #include <freertos/task.h>
 #include "../config.h"
 #include "../shared/queues.h"
+#include "../shared/types.h"
 #include "../communication/espnow_handler.h"
 #include "../communication/command_protocol.h"
 #include "../safety/timeout_monitor.h"
+
+// External flag from main.cpp indicating setup is complete
+extern volatile bool setupComplete;
 
 void task_communication(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION);  // Use config value (100ms = 10 Hz)
@@ -20,34 +24,73 @@ void task_communication(void *pvParameters) {
     
     Serial.println("[TASK_COMM] Communication task started");
     
-    // Initialize ESP-NOW (may already be initialized in setup, but that's OK)
-    if (!espnow_init()) {
+    // Wait for setup to complete before initializing
+    while (!setupComplete) {
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+    }
+    
+    #if SIMULATION_MODE
+    Serial.println("[TASK_COMM] Running in SIMULATION MODE - ESP-NOW disabled");
+    Serial.println("[TASK_COMM] Commands can be sent directly to xCommandQueue for testing");
+    #else
+    // Initialize ESP-NOW only in normal mode
+    if (!espnow_init(SIMULATION_MODE)) {
         Serial.println("[ERROR] ESP-NOW init failed!");
         vTaskDelete(NULL);
         return;
     }
-    Serial.println("[TASK_COMM] ESP-NOW ready - listening for commands");
+    Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
+    #endif
     
-    uint8_t cmd_byte = 0;
+    ESPNowRawMessage raw_msg;
     
     while (1) {
+        #if SIMULATION_MODE
+        // In simulation mode, just process commands from xCommandQueue
+        // Test tasks can directly send to xCommandQueue
+        // This task doesn't need to do anything except yield CPU time
+        vTaskDelayUntil(&lastWakeTime, period);
+        #else
         // Read command from ESP-NOW queue (ISR puts commands here)
-        if (xQueueReceive(xESPNowQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
+        if (xQueueReceive(xESPNowQueue, &raw_msg, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
+            // Always print what we received (for debugging)
+            Serial.print("[COMM] Received message - Length: ");
+            Serial.print(raw_msg.length);
+            Serial.print(" bytes, First byte: 0x");
+            Serial.print(raw_msg.first_byte, HEX);
+            Serial.print(" (");
+            Serial.print(raw_msg.first_byte);
+            Serial.print(")");
+            
+            if (raw_msg.length >= 2) {
+                Serial.print(", Second byte: 0x");
+                Serial.print(raw_msg.second_byte, HEX);
+                Serial.print(" (");
+                Serial.print(raw_msg.second_byte);
+                Serial.print(")");
+            }
+            
             // Validate command
-            if (isValidCommand(cmd_byte)) {
-                Serial.print("[COMM] Received command byte: 0x");
-                Serial.println(cmd_byte, HEX);
+            if (raw_msg.length >= 1 && isValidCommand(raw_msg.first_byte)) {
+                Serial.println(" - VALID command");
                 
                 // Send to motor control task
+                uint8_t cmd_byte = raw_msg.first_byte;
                 if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
                     Serial.println("[COMM] Warning: Command queue full!");
                 }
             } else {
-                Serial.print("[COMM] Invalid command byte: 0x");
-                Serial.println(cmd_byte, HEX);
+                if (raw_msg.length != 1) {
+                    Serial.print(" - WRONG LENGTH (expected 1 byte, got ");
+                    Serial.print(raw_msg.length);
+                    Serial.println(" bytes)");
+                } else {
+                    Serial.println(" - INVALID command byte (ignored)");
+                }
             }
         }
         
         vTaskDelayUntil(&lastWakeTime, period);
+        #endif
     }
 }

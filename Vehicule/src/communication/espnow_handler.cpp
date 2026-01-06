@@ -12,6 +12,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include "../shared/queues.h"
+#include "../shared/types.h"
 
 /**
  * @brief ESP-NOW receive callback (called from ISR context)
@@ -21,25 +22,18 @@
  * @note This is called from ISR context - keep it minimal!
  */
 void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
-    // Expect exactly 1 byte (binary command)
-    if (len != sizeof(uint8_t)) {
-        // Invalid packet size - ignore
-        // Note: Can't use Serial.println here (ISR context)
-        return;
-    }
-    
-    uint8_t cmd_byte = data[0];
-    
-    // Validate command
-    if (!isValidCommand(cmd_byte)) {
-        return;
-    }
-    
-    // Send to queue from ISR context
-    // This is safe because we're using xQueueSendFromISR
-    if (xESPNowQueue != NULL) {
+    // Always queue the received data for debugging, regardless of length
+    // The communication task will validate and print all details
+    if (xESPNowQueue != NULL && len > 0) {
+        ESPNowRawMessage msg;
+        msg.first_byte = data[0];
+        msg.second_byte = (len > 1) ? data[1] : 0;
+        msg.length = (len > 255) ? 255 : len;  // Cap at 255 for uint8_t
+        
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        xQueueSendFromISR(xESPNowQueue, &cmd_byte, &xHigherPriorityTaskWoken);
+        
+        // Queue the message (communication task will handle validation and printing)
+        xQueueSendFromISR(xESPNowQueue, &msg, &xHigherPriorityTaskWoken);
 
         // If queue is full, command is dropped (but that's OK - we'll get the next one)
         // Yield if a higher priority task was woken
@@ -49,7 +43,18 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     }
 }
 
-bool espnow_init() {
+bool espnow_init(bool simulation_mode) {
+    // In simulation mode, skip WiFi initialization entirely (non-blocking)
+    if (simulation_mode) {
+        Serial.println("\n[SIM_MODE] 🧪 SIMULATION MODE ACTIVE");
+        Serial.println("[SIM_MODE] ESP-NOW receiver NOT required");
+        Serial.println("[SIM_MODE] Skipping WiFi initialization (simulation mode)\n");
+        return true;
+    }
+    
+    // Normal mode: Initialize WiFi and ESP-NOW
+    Serial.println("🔧 ESP32 set to STA mode");
+    
     // Set WiFi to station mode (matching Vehicule_Controller.ino)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();  // Disconnect from any previous connection

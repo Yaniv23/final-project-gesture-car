@@ -13,7 +13,7 @@
  */
 
 // Queue: ESP-NOW ISR → Communication Task
-// Holds uint8_t command bytes from ESP-NOW callback
+// Holds ESPNowRawMessage from ESP-NOW callback (includes first byte + length for debugging)
 extern QueueHandle_t xESPNowQueue;
 
 // Queue: Communication Task → Motor Control Task

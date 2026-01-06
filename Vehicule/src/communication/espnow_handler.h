@@ -14,9 +14,10 @@
 
 /**
  * @brief Initialize ESP-NOW communication
+ * @param simulation_mode If true, skip ESP-NOW init (for testing without receiver)
  * @return true if successful, false otherwise
  */
-bool espnow_init();
+bool espnow_init(bool simulation_mode);
 
 /**
  * @brief Get MAC address as string (for debugging)

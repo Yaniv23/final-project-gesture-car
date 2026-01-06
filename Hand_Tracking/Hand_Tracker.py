@@ -62,7 +62,7 @@ except serial.SerialException as e:
 
 # Stability filtering
 last_detected = ""
-current_display = ""
+current_display = "Stop"  # Initialize to Stop so we can send immediately
 stable_counter = 0
 stable_threshold = 10  # Frames needed to confirm a new label
 
@@ -164,6 +164,9 @@ def main():
     # === MAIN LOOP ===
     frame_count = 0
     iteration_count = 0
+    last_send_time = 0  # Track when last command was sent
+    last_sent_command = None  # Track last sent command to avoid duplicate prints
+    send_interval = 0.2  # Send command every 1 second
     while True:
         iteration_count += 1
         ret, frame = cap.read()
@@ -239,19 +242,34 @@ def main():
             stable_counter = 0
             last_detected = detected_label
 
+        # Update current_display when stable
         if stable_counter >= stable_threshold:
             if current_display != detected_label:
                 current_display = detected_label
-                if ser and ser.is_open:
-                    try:
-                        # Look up binary command byte; default to STOP (0x00) if unknown
-                        cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["Stop"])
-                        ser.write(bytes([cmd_byte]))
-                        print(f"Sent to ESP32: {current_display} -> 0x{cmd_byte:02X}")
-                    except Exception as e:
-                        print("Serial write error:", e)
-                else:
+
+        # Send command every 1 second (if we have a stable command)
+        current_time = time.time()
+        if current_display and (current_time - last_send_time) >= send_interval:
+            if ser and ser.is_open:
+                try:
+                    # Look up binary command byte; default to STOP (0x00) if unknown
+                    cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["Stop"])
+                    # Send as text string (decimal) with newline - ESP32 expects "7\n" or "0x07\n"
+                    # Format: "<cmd>\n" where cmd can be decimal or hex
+                    cmd_str = f"{cmd_byte}\n"
+                    ser.write(cmd_str.encode('utf-8'))
+                    # Only print if command changed
+                    if last_sent_command != current_display:
+                        print(f"Sent to ESP32: {current_display} -> 0x{cmd_byte:02X} ({cmd_byte})")
+                        last_sent_command = current_display
+                    last_send_time = current_time
+                except Exception as e:
+                    print("Serial write error:", e)
+            else:
+                if last_sent_command != current_display:
                     print("Detected (no serial):", current_display)
+                    last_sent_command = current_display
+                last_send_time = current_time
 
         # Read serial
         if ser and ser.is_open:
