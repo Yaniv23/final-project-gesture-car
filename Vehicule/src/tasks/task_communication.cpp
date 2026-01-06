@@ -20,12 +20,13 @@ void task_communication(void *pvParameters) {
     
     Serial.println("[TASK_COMM] Communication task started");
     
-    // Initialize ESP-NOW
+    // Initialize ESP-NOW (may already be initialized in setup, but that's OK)
     if (!espnow_init()) {
         Serial.println("[ERROR] ESP-NOW init failed!");
         vTaskDelete(NULL);
         return;
     }
+    Serial.println("[TASK_COMM] ESP-NOW ready - listening for commands");
     
     uint8_t cmd_byte = 0;
     

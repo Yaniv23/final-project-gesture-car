@@ -54,29 +54,26 @@ bool espnow_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();  // Disconnect from any previous connection
     delay(200);  // Give WiFi time to initialize
-    Serial.println("🔧 ESP32 set to STA mode");
     
     // Print MAC address using esp_wifi_get_mac (matching Vehicule_Controller.ino)
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
-    Serial.print("📡 MAC Address: ");
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.println(macStr);
     
-    // Initialize ESP-NOW
-    if (esp_now_init() != ESP_OK) {
+    // Initialize ESP-NOW (idempotent - can be called multiple times)
+    esp_err_t init_result = esp_now_init();
+    if (init_result == ESP_ERR_ESPNOW_EXIST) {
+        // ESP-NOW already initialized - this is OK
+        return true;
+    } else if (init_result != ESP_OK) {
         Serial.println("[ERROR] ESP-NOW: Initialization failed");
         return false;
     }
     
-    // Register receive callback
+    // Register receive callback (idempotent - can be called multiple times)
     esp_now_register_recv_cb(onESPNowReceive);
-    Serial.println("🟢 Ready to receive ESP-NOW messages");
-    Serial.println("🟢 Binary command protocol initialized");
-    Serial.println("\n📡 Waiting for ESP-NOW commands...");
-    Serial.println("   (Send binary commands from sender ESP32)\n");
     
     return true;
 }

@@ -7,6 +7,9 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+#include <esp_now.h>
 
 // Configuration
 #include "config.h"
@@ -24,6 +27,7 @@
 
 // Communication
 #include "communication/command_protocol.h"
+#include "communication/espnow_handler.h"
 
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
@@ -51,6 +55,32 @@ void setup() {
     Serial.println("CPU Frequency: " + String(getCpuFrequencyMhz()) + " MHz");
     Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
     Serial.println("========================================\n");
+    
+    // Initialize WiFi and ESP-NOW for communication
+    Serial.println("[SETUP] Initializing WiFi and ESP-NOW...");
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(200);  // Give WiFi time to initialize
+    
+    // Print MAC address
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    Serial.print("[SETUP] MAC Address: ");
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    Serial.println(macStr);
+    
+    // Initialize ESP-NOW
+    if (espnow_init()) {
+        Serial.println("[SETUP] ESP-NOW initialized successfully");
+        Serial.println("[SETUP] Receiver ready - waiting for sender connection...");
+        Serial.println("[SETUP] Connection status: Ready to receive ESP-NOW messages");
+    } else {
+        Serial.println("[ERROR] ESP-NOW initialization failed!");
+        while (1) delay(1000);  // Halt on error
+    }
+    Serial.println();
     
     // Initialize shared queues and semaphores
     Serial.println("[SETUP] Initializing shared queues...");

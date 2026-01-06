@@ -16,6 +16,24 @@ cap = None  # Will be initialized in main()
 # Serial to ESP32 - Try to connect, but make it optional
 ser = None
 
+# === Command Mapping (matches Vehicule/src/communication/command_protocol.h) ===
+COMMAND_MAP = {
+    "Stop": 0x00,                    # CMD_STOP
+    "Forward": 0x01,                 # CMD_FORWARD
+    "Backward": 0x02,                # CMD_BACKWARD
+    "Sideway_Left": 0x03,            # CMD_STRAFE_LEFT
+    "Sideway_Right": 0x04,           # CMD_STRAFE_RIGHT
+    "rotate_cw": 0x05,               # CMD_ROTATE_CW
+    "rotate_ccw": 0x06,              # CMD_ROTATE_CCW
+    "diagonal_forward_left": 0x07,   # CMD_DIAGONAL_FORWARD_LEFT
+    "diagonal_forward_right": 0x08,  # CMD_DIAGONAL_FORWARD_RIGHT
+    "diagonal_backward_left": 0x09,  # CMD_DIAGONAL_BACKWARD_LEFT
+    "diagonal_backward_right": 0x0A, # CMD_DIAGONAL_BACKWARD_RIGHT
+    "pivot_left": 0x0B,              # CMD_PIVOT_LEFT
+    "pivot_right": 0x0C,             # CMD_PIVOT_RIGHT
+    "Center": 0x00,                  # Treat center as STOP
+}
+
 def find_available_ports():
     """Find all available COM ports"""
     ports = serial.tools.list_ports.comports()
@@ -226,8 +244,10 @@ def main():
                 current_display = detected_label
                 if ser and ser.is_open:
                     try:
-                        ser.write((current_display + '\n').encode('utf-8'))
-                        print("Sent to ESP32:", current_display)
+                        # Look up binary command byte; default to STOP (0x00) if unknown
+                        cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["Stop"])
+                        ser.write(bytes([cmd_byte]))
+                        print(f"Sent to ESP32: {current_display} -> 0x{cmd_byte:02X}")
                     except Exception as e:
                         print("Serial write error:", e)
                 else:
