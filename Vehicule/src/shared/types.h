@@ -36,4 +36,13 @@ enum MotorID {
     MOTOR_BACK_RIGHT = 3
 };
 
+/**
+ * @brief Raw ESP-NOW message structure (for debugging)
+ */
+struct ESPNowRawMessage {
+    uint8_t first_byte;   // First byte of received message
+    uint8_t second_byte;  // Second byte (0 if message length < 2)
+    uint8_t length;       // Total length of received message
+};
+
 #endif // SHARED_TYPES_H

@@ -22,9 +22,9 @@ QueueHandle_t xMotorStatusQueue = NULL;
 SemaphoreHandle_t xSafetySemaphore = NULL;
 
 bool initSharedQueues() {
-    // Create ESP-NOW queue (ISR context, holds uint8_t command bytes)
-    // Queue size: 5 commands
-    xESPNowQueue = xQueueCreate(5, sizeof(uint8_t));
+    // Create ESP-NOW queue (ISR context, holds ESPNowRawMessage for debugging)
+    // Queue size: 5 messages
+    xESPNowQueue = xQueueCreate(5, sizeof(ESPNowRawMessage));
     if (xESPNowQueue == NULL) {
         Serial.println("[ERROR] Queues: Failed to create xESPNowQueue");
         return false;

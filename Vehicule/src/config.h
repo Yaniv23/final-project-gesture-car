@@ -81,7 +81,7 @@
 
 // Simulation mode: Set to 1 for testing without ESP-NOW receiver
 // Set to 0 for actual ESP-NOW operation with remote control
-#define SIMULATION_MODE            1     // 1 = Simulation (no ESP-NOW wait), 0 = Normal (ESP-NOW active)
+#define SIMULATION_MODE            0     // 1 = Simulation (no ESP-NOW wait), 0 = Normal (ESP-NOW active)
 
 // ============================================================================
 // Safety Settings

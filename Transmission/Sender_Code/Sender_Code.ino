@@ -4,7 +4,7 @@
 uint8_t receiverMAC[] = {0x00, 0x4B, 0x12, 0x34, 0xF7, 0xF4}; 
 
 typedef struct struct_message {
-  char command[32];
+  uint8_t command;          // single-byte command expected by vehicle
 } struct_message;
 
 struct_message outgoingMsg;
@@ -37,11 +37,27 @@ void setup() {
 
 void loop() {
   if (Serial.available()) {
+    // Read line from serial and convert to uint8_t command
     String input = Serial.readStringUntil('\n');
     input.trim();
-    input.toCharArray(outgoingMsg.command, sizeof(outgoingMsg.command));
-    esp_now_send(receiverMAC, (uint8_t *)&outgoingMsg, sizeof(outgoingMsg));
-    Serial.print("📤 Sent: ");
-    Serial.println(outgoingMsg.command);
+    
+    // Accept decimal (default) or hex with 0x prefix
+    long value = input.startsWith("0x") || input.startsWith("0X")
+                   ? strtol(input.c_str(), nullptr, 16)
+                   : input.toInt();
+
+    if (value < 0 || value > 255) {
+      Serial.println("⚠️  Invalid command (must be 0-255 or 0x00-0xFF)");
+      return;
+    }
+
+    outgoingMsg.command = static_cast<uint8_t>(value);
+    esp_now_send(receiverMAC, reinterpret_cast<uint8_t*>(&outgoingMsg), sizeof(outgoingMsg));
+
+    Serial.print("📤 Sent byte: 0x");
+    Serial.print(outgoingMsg.command, HEX);
+    Serial.print(" (");
+    Serial.print(outgoingMsg.command);
+    Serial.println(")");
   }
 }
