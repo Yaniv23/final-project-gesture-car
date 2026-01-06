@@ -7,31 +7,31 @@
 // NOTE: ESP32 GPIO 34, 35, 36, 39 are INPUT-ONLY and cannot be used for PWM output
 // Using valid PWM-capable pins (2-33, except 24, 28-31)
 
-// Common PWM pin for all motors (controls speed of all motors simultaneously)
-#define MOTOR_PWM_COMMON   2  // Valid PWM pin - was 34 (input-only)
+// Front Right Motor (Driver #1, Channel A)
+#define FRONT_RIGHT_EN     19  // PWM pin for Front Right motor (PWMA on Driver #1)
+#define FRONT_RIGHT_IN1    5   // Front Right direction pin 1 (AIN1 on Driver #1)
+#define FRONT_RIGHT_IN2    18  // Front Right direction pin 2 (AIN2 on Driver #1)
 
-// Front Right Motor (L298N Driver #1)
-#define FRONT_RIGHT_IN1    5  // Valid GPIO - was 35 (input-only)
-#define FRONT_RIGHT_IN2    32
+// Back Right Motor (Driver #2, Channel C)
+#define BACK_RIGHT_EN      27  // PWM pin for Back Right motor (PWMC on Driver #2)
+#define BACK_RIGHT_IN1     25  // Back Right direction pin 1 (CIN1 on Driver #2)
+#define BACK_RIGHT_IN2     26  // Back Right direction pin 2 (CIN2 on Driver #2)
 
-// Front Left Motor (L298N Driver #1)
-#define FRONT_LEFT_IN3     33
-#define FRONT_LEFT_IN4     25
+// Front Left Motor (Driver #1, Channel B)
+#define FRONT_LEFT_EN      23  // PWM pin for Front Left motor (PWMB on Driver #1)
+#define FRONT_LEFT_IN1     21  // Front Left direction pin 1 (BIN1 on Driver #1)
+#define FRONT_LEFT_IN2     22  // Front Left direction pin 2 (BIN2 on Driver #1)
 
-// Back Right Motor (L298N Driver #2)
-#define BACK_RIGHT_IN1     27
-#define BACK_RIGHT_IN2     14
-
-// Back Left Motor (L298N Driver #2)
-#define BACK_LEFT_IN3      12
-#define BACK_LEFT_IN4      13
-
+// Back Left Motor (Driver #2, Channel D)
+#define BACK_LEFT_EN       14  // PWM pin for Back Left motor (PWMD on Driver #2)
+#define BACK_LEFT_IN1      32  // Back Left direction pin 1 (DIN1 on Driver #2)
+#define BACK_LEFT_IN2      33  // Back Left direction pin 2 (DIN2 on Driver #2)
 // Servo Motor (for scanning)
 #define SERVO_PIN          4
 
 // Ultrasonic Sensor (HC-SR04)
-#define ULTRASONIC_TRIG    18
-#define ULTRASONIC_ECHO    16
+// #define ULTRASONIC_TRIG    18
+// #define ULTRASONIC_ECHO    16
 
 // ============================================================================
 // Motor Speed Constants

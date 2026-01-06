@@ -66,7 +66,6 @@ void motion_forward() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_backward() {
@@ -79,7 +78,6 @@ void motion_backward() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)(-speed));
 }
 
 void motion_sideway_left() {
@@ -93,7 +91,6 @@ void motion_sideway_left() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_sideway_right() {
@@ -107,7 +104,6 @@ void motion_sideway_right() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_rotate_cw() {
@@ -121,7 +117,6 @@ void motion_rotate_cw() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_rotate_ccw() {
@@ -135,7 +130,6 @@ void motion_rotate_ccw() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_diagonal_315() {
@@ -149,7 +143,6 @@ void motion_diagonal_315() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_diagonal_45() {
@@ -164,7 +157,6 @@ void motion_diagonal_45() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_diagonal_225() {
@@ -179,7 +171,6 @@ void motion_diagonal_225() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setCommonPWM((uint16_t)(-speed));
 }
 
 void motion_diagonal_135() {
@@ -193,7 +184,6 @@ void motion_diagonal_135() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
-    motor_driver_->setCommonPWM((uint16_t)(-speed));
 }
 
 void motion_pivot_left() {
@@ -207,7 +197,6 @@ void motion_pivot_left() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }
 
 void motion_pivot_right() {
@@ -221,5 +210,4 @@ void motion_pivot_right() {
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
-    motor_driver_->setCommonPWM((uint16_t)speed);
 }

@@ -110,25 +110,29 @@ void setup() {
     }
     Serial.println("[SETUP] Shared queues initialized");
     
-    // Initialize MotorDriver with common PWM pin
+    // Initialize MotorDriver with individual enable pins for each motor
     Serial.println("[SETUP] Initializing MotorDriver...");
     MotorDriver::MotorConfig motor_configs[4] = {
-        // Front Left Motor (direction pins only)
-        {FRONT_LEFT_IN3, FRONT_LEFT_IN4},
+        // Front Left Motor (direction pins + enable pin)
+        {FRONT_LEFT_IN1, FRONT_LEFT_IN2, FRONT_LEFT_EN},
         // Front Right Motor
-        {FRONT_RIGHT_IN1, FRONT_RIGHT_IN2},
+        {FRONT_RIGHT_IN1, FRONT_RIGHT_IN2, FRONT_RIGHT_EN},
         // Back Left Motor
-        {BACK_LEFT_IN3, BACK_LEFT_IN4},
+        {BACK_LEFT_IN1, BACK_LEFT_IN2, BACK_LEFT_EN},
         // Back Right Motor
-        {BACK_RIGHT_IN1, BACK_RIGHT_IN2}
+        {BACK_RIGHT_IN1, BACK_RIGHT_IN2, BACK_RIGHT_EN}
     };
     
-    // Initialize with common PWM pin (pin 34) and LEDC channel 0
-    if (!motor_driver.init(motor_configs, MOTOR_PWM_COMMON, 0)) {
+    // Initialize with individual enable pins (each motor has its own PWM pin)
+    if (!motor_driver.init(motor_configs)) {
         Serial.println("[ERROR] Failed to initialize MotorDriver!");
         while (1) delay(1000);  // Halt on error
     }
-    Serial.println("[SETUP] MotorDriver initialized (common PWM on pin " + String(MOTOR_PWM_COMMON) + ")");
+    Serial.println("[SETUP] MotorDriver initialized with individual enable pins:");
+    Serial.println("       Front Left:  EN=" + String(FRONT_LEFT_EN) + ", IN1=" + String(FRONT_LEFT_IN1) + ", IN2=" + String(FRONT_LEFT_IN2));
+    Serial.println("       Front Right: EN=" + String(FRONT_RIGHT_EN) + ", IN1=" + String(FRONT_RIGHT_IN1) + ", IN2=" + String(FRONT_RIGHT_IN2));
+    Serial.println("       Back Left:   EN=" + String(BACK_LEFT_EN) + ", IN1=" + String(BACK_LEFT_IN1) + ", IN2=" + String(BACK_LEFT_IN2));
+    Serial.println("       Back Right:  EN=" + String(BACK_RIGHT_EN) + ", IN1=" + String(BACK_RIGHT_IN1) + ", IN2=" + String(BACK_RIGHT_IN2));
     
     // Ensure all motors are stopped initially (safety measure)
     motor_driver.stopAll();
