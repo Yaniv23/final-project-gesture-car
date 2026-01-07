@@ -41,15 +41,11 @@ void setup() {
   // Receive callback is used to detect handshake ACK from vehicle.
   esp_now_register_recv_cb(onDataRecv);
 
-  // Send callback is only used for diagnostics now.
-  // IMPORTANT: We do NOT treat a successful send as "connection established"
-  // because the vehicle might not yet be ready to receive.
+  // Send callback kept for future diagnostics; currently does not print
+  // to keep Serial output clean during normal operation.
   esp_now_register_send_cb([](const uint8_t *mac, esp_now_send_status_t status) {
-    if (status == ESP_NOW_SEND_SUCCESS) {
-      Serial.println("✅ Sent");
-    } else {
-      Serial.println("❌ Failed");
-    }
+    (void)mac;
+    (void)status;
   });
 
   esp_now_peer_info_t peerInfo = {};
@@ -144,15 +140,7 @@ void loop() {
 
     esp_now_send(receiverMAC, reinterpret_cast<uint8_t*>(&outgoingMsg), sizeof(outgoingMsg));
 
-    Serial.print("📤 Sent bytes: cmd=0x");
-    Serial.print(outgoingMsg.command, HEX);
-    Serial.print(" (");
-    Serial.print(outgoingMsg.command);
-    Serial.print("), param=0x");
-    Serial.print(outgoingMsg.param, HEX);
-    Serial.print(" (");
-    Serial.print(outgoingMsg.param);
-    Serial.println(")");
+
   }
 }
 
