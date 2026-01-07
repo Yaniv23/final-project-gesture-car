@@ -78,6 +78,7 @@
 #define ESP_NOW_CHANNEL            0
 #define PROTOCOL_TIMEOUT_MS        500
 #define COMMAND_TIMEOUT_MS         500   // Auto-stop if no command received
+#define ESP_NOW_CONNECTION_TIMEOUT_MS 60000  // 60 seconds - wait for connection in setup
 
 // Simulation mode: Set to 1 for testing without ESP-NOW receiver
 // Set to 0 for actual ESP-NOW operation with remote control

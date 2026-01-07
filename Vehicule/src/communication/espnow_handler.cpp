@@ -13,6 +13,10 @@
 #include <freertos/queue.h>
 #include "../shared/queues.h"
 #include "../shared/types.h"
+#include "../config.h"
+
+// Connection status flag (set when first message is received)
+static volatile bool espnow_connected = false;
 
 /**
  * @brief ESP-NOW receive callback (called from ISR context)
@@ -22,6 +26,11 @@
  * @note This is called from ISR context - keep it minimal!
  */
 void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
+    // Mark connection as established when first message is received
+    if (!espnow_connected && len > 0) {
+        espnow_connected = true;
+    }
+    
     // Always queue the received data for debugging, regardless of length
     // The communication task will validate and print all details
     if (xESPNowQueue != NULL && len > 0) {
@@ -97,4 +106,49 @@ bool espnow_get_mac_string(char* mac_str, size_t len) {
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     
     return true;
+}
+
+bool espnow_is_connected() {
+    return espnow_connected;
+}
+
+bool espnow_wait_for_connection(uint32_t timeout_ms) {
+    // In simulation mode, return immediately
+    #if SIMULATION_MODE
+    return true;
+    #endif
+    
+    // Reset connection flag
+    espnow_connected = false;
+    
+    uint32_t start_time = millis();
+    uint32_t last_status_time = start_time;
+    const uint32_t status_interval_ms = 2000;  // Print status every 2 seconds
+    
+    Serial.println("[ESP-NOW] Waiting for connection from sender...");
+    
+    while (millis() - start_time < timeout_ms) {
+        if (espnow_connected) {
+            Serial.println("[ESP-NOW] ✓ Connection established!");
+            return true;
+        }
+        
+        // Print status updates periodically
+        uint32_t current_time = millis();
+        if (current_time - last_status_time >= status_interval_ms) {
+            uint32_t elapsed = current_time - start_time;
+            uint32_t remaining = (timeout_ms > elapsed) ? (timeout_ms - elapsed) : 0;
+            Serial.print("[ESP-NOW] Waiting... (");
+            Serial.print(elapsed / 1000);
+            Serial.print("s elapsed, ");
+            Serial.print(remaining / 1000);
+            Serial.println("s remaining)");
+            last_status_time = current_time;
+        }
+        
+        delay(100);  // Poll every 100ms
+    }
+    
+    Serial.println("[ESP-NOW] ✗ Connection timeout - no message received");
+    return false;
 }

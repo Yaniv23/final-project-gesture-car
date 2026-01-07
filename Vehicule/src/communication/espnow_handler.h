@@ -26,4 +26,18 @@ bool espnow_init(bool simulation_mode);
  */
 bool espnow_get_mac_string(char* mac_str, size_t len);
 
+/**
+ * @brief Check if ESP-NOW connection is established
+ * @return true if connected (first message received), false otherwise
+ */
+bool espnow_is_connected();
+
+/**
+ * @brief Wait for ESP-NOW connection to be established
+ * @param timeout_ms Maximum time to wait in milliseconds
+ * @return true if connected, false if timeout expired
+ * @note In simulation mode, returns true immediately
+ */
+bool espnow_wait_for_connection(uint32_t timeout_ms);
+
 #endif // ESPNOW_HANDLER_H

@@ -70,13 +70,8 @@ void setup() {
     Serial.println(">>> RUNNING IN NORMAL MODE <<<");
     Serial.println(">>> PRODUCTION MODE <<<");
     #endif
-    Serial.println("========================================");
-    Serial.println("FreeRTOS Version: " + String(tskKERNEL_VERSION_NUMBER));
-    Serial.println("CPU Frequency: " + String(getCpuFrequencyMhz()) + " MHz");
-    Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
-    Serial.println("========================================\n");
+
     
-    // Initialize WiFi and ESP-NOW for communication
     Serial.println("[SETUP] Initializing WiFi and ESP-NOW...");
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
@@ -94,8 +89,19 @@ void setup() {
     // Initialize ESP-NOW (honor SIMULATION_MODE flag)
     if (espnow_init(SIMULATION_MODE)) {
         Serial.println("[SETUP] ESP-NOW initialized successfully");
-        Serial.println("[SETUP] Receiver ready - waiting for sender connection...");
-        Serial.println("[SETUP] Connection status: Ready to receive ESP-NOW messages");
+        
+        #if !SIMULATION_MODE
+        // Wait for connection from sender before continuing
+        Serial.println("[SETUP] Waiting for ESP-NOW connection from sender...");
+        if (!espnow_wait_for_connection(ESP_NOW_CONNECTION_TIMEOUT_MS)) {
+            Serial.println("[ERROR] ESP-NOW connection timeout!");
+            Serial.println("[ERROR] No message received from sender within timeout period");
+            while (1) delay(1000);  // Halt on error
+        }
+        Serial.println("[SETUP] ✓ ESP-NOW connection established");
+        #else
+        Serial.println("[SETUP] SIMULATION MODE - skipping connection wait");
+        #endif
     } else {
         Serial.println("[ERROR] ESP-NOW initialization failed!");
         while (1) delay(1000);  // Halt on error

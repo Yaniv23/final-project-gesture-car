@@ -11,6 +11,9 @@ typedef struct struct_message {
 
 struct_message outgoingMsg;
 
+// Connection status flag (set when first successful send occurs)
+volatile bool peer_connected = false;
+
 void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
@@ -21,7 +24,12 @@ void setup() {
   }
 
   esp_now_register_send_cb([](const uint8_t *mac, esp_now_send_status_t status) {
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "✅ Sent" : "❌ Failed");
+    if (status == ESP_NOW_SEND_SUCCESS) {
+      peer_connected = true;
+      Serial.println("✅ Sent");
+    } else {
+      Serial.println("❌ Failed");
+    }
   });
 
   esp_now_peer_info_t peerInfo = {};
@@ -34,7 +42,44 @@ void setup() {
     return;
   }
 
-  Serial.println("🟢 Sender ready");
+  // Reset connection flag
+  peer_connected = false;
+  
+  const uint32_t timeout_ms = 60000;  // 60 seconds
+  const uint32_t heartbeat_interval_ms = 200;  // Send every 200ms
+  uint32_t start_time = millis();
+  uint32_t last_status_time = start_time;
+  const uint32_t status_interval_ms = 2000;  // Print status every 2 seconds
+  
+  outgoingMsg.command = 0x00;  // CMD_STOP - safe heartbeat command
+  outgoingMsg.param = 0x00;
+  
+  while (!peer_connected && (millis() - start_time < timeout_ms)) {
+    // Send heartbeat message
+    esp_now_send(receiverMAC, reinterpret_cast<uint8_t*>(&outgoingMsg), sizeof(outgoingMsg));
+    
+    // Print status updates periodically
+    uint32_t current_time = millis();
+    if (current_time - last_status_time >= status_interval_ms) {
+      uint32_t elapsed = current_time - start_time;
+      uint32_t remaining = (timeout_ms > elapsed) ? (timeout_ms - elapsed) : 0;
+      Serial.print("📡 Waiting for connection... (");
+      Serial.print(elapsed / 1000);
+      Serial.print("s elapsed, ");
+      Serial.print(remaining / 1000);
+      Serial.println("s remaining)");
+      last_status_time = current_time;
+    }
+    
+    delay(heartbeat_interval_ms);
+  }
+  
+  if (peer_connected) {
+    Serial.println("🟢 Sender ready - connection established!");
+  } else {
+    Serial.println("❌ Connection timeout - failed to establish connection");
+    Serial.println("   Please check receiver is powered on and MAC address is correct");
+  }
 }
 
 void loop() {
