@@ -11,12 +11,18 @@
 #include <esp_now.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <string.h>
 #include "../shared/queues.h"
 #include "../shared/types.h"
 #include "../config.h"
 
 // Connection status flag (set when first message is received)
 static volatile bool espnow_connected = false;
+
+// MAC address of the last known sender (filled on first received packet)
+static uint8_t sender_mac[6] = {0};
+static volatile bool sender_mac_known = false;
+static bool sender_peer_added = false;
 
 /**
  * @brief ESP-NOW receive callback (called from ISR context)
@@ -29,6 +35,18 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     // Mark connection as established when first message is received
     if (!espnow_connected && len > 0) {
         espnow_connected = true;
+    }
+
+    // Cache the sender MAC on first valid packet so we can reply later
+    if (!sender_mac_known && mac_addr != nullptr) {
+        memcpy(sender_mac, mac_addr, 6);
+        sender_mac_known = true;
+        Serial.print("[ESP-NOW] Learned sender MAC: ");
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 sender_mac[0], sender_mac[1], sender_mac[2],
+                 sender_mac[3], sender_mac[4], sender_mac[5]);
+        Serial.println(macStr);
     }
     
     // Always queue the received data for debugging, regardless of length
@@ -90,6 +108,56 @@ bool espnow_init(bool simulation_mode) {
     esp_now_register_recv_cb(onESPNowReceive);
     
     return true;
+}
+
+bool espnow_send_bytes(const uint8_t* data, size_t len) {
+    // In simulation mode we never use ESP-NOW for sending
+    #if SIMULATION_MODE
+    (void)data;
+    (void)len;
+    return false;
+    #else
+    if (data == nullptr || len == 0) {
+        return false;
+    }
+
+    if (!sender_mac_known) {
+        Serial.println("[ESP-NOW] Cannot send: sender MAC unknown (no packets received yet)");
+        return false;
+    }
+
+    // Lazily add sender as a peer the first time we try to send back
+    if (!sender_peer_added) {
+        esp_now_peer_info_t peerInfo = {};
+        memcpy(peerInfo.peer_addr, sender_mac, 6);
+        peerInfo.channel = 0;      // Use current WiFi channel
+        peerInfo.encrypt = false;  // No encryption for now
+
+        esp_err_t peer_err = esp_now_add_peer(&peerInfo);
+        if (peer_err != ESP_OK && peer_err != ESP_ERR_ESPNOW_EXIST) {
+            Serial.print("[ESP-NOW] Failed to add sender as peer, error: ");
+            Serial.println(peer_err);
+            return false;
+        }
+        sender_peer_added = true;
+    }
+
+    esp_err_t res = esp_now_send(sender_mac, data, len);
+    if (res != ESP_OK) {
+        Serial.print("[ESP-NOW] esp_now_send failed, error: ");
+        Serial.println(res);
+        return false;
+    }
+
+    return true;
+    #endif
+}
+
+bool espnow_send_handshake_ack(uint8_t status_byte) {
+    uint8_t frame[2];
+    frame[0] = CMD_HANDSHAKE_ACK;
+    frame[1] = status_byte;
+    return espnow_send_bytes(frame, sizeof(frame));
 }
 
 bool espnow_get_mac_string(char* mac_str, size_t len) {

@@ -33,6 +33,19 @@ enum CommandByte {
 };
 
 /**
+ * @brief Special high-value control bytes used for ESP-NOW link management
+ *
+ * These are NOT motion commands and must never be forwarded to the motor
+ * control task. They are handled at the communication/transport layer.
+ *
+ * Range is chosen above normal motion commands (0x00–0x0C) so they are
+ * trivially distinguishable and always fail isValidCommand().
+ */
+static const uint8_t CMD_HANDSHAKE_INIT  = 0xF0;  ///< Sender → vehicle: request handshake
+static const uint8_t CMD_HANDSHAKE_ACK   = 0xF1;  ///< Vehicle → sender: acknowledge handshake
+static const uint8_t CMD_HEARTBEAT       = 0xF2;  ///< (Optional) future heartbeat/status frames
+
+/**
  * @brief Validate if a command byte is valid
  * @param cmd_byte Command byte to validate
  * @return true if valid, false otherwise
