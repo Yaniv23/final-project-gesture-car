@@ -22,8 +22,6 @@ void task_communication(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION);  // Use config value (100ms = 10 Hz)
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_COMM] Communication task started");
-    
     // Wait for setup to complete before initializing
     while (!setupComplete) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
@@ -33,12 +31,7 @@ void task_communication(void *pvParameters) {
     Serial.println("[TASK_COMM] Running in SIMULATION MODE - ESP-NOW disabled");
     Serial.println("[TASK_COMM] Commands can be sent directly to xCommandQueue for testing");
     #else
-    // Initialize ESP-NOW only in normal mode
-    if (!espnow_init(SIMULATION_MODE)) {
-        Serial.println("[ERROR] ESP-NOW init failed!");
-        vTaskDelete(NULL);
-        return;
-    }
+    // ESP-NOW is initialized once in main.cpp during setup()
     Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
     #endif
     
@@ -53,39 +46,40 @@ void task_communication(void *pvParameters) {
         #else
         // Read command from ESP-NOW queue (ISR puts commands here)
         if (xQueueReceive(xESPNowQueue, &raw_msg, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
-            // Always print what we received (for debugging)
-            Serial.print("[COMM] Received message - Length: ");
-            Serial.print(raw_msg.length);
-            Serial.print(" bytes, First byte: 0x");
-            Serial.print(raw_msg.first_byte, HEX);
-            Serial.print(" (");
-            Serial.print(raw_msg.first_byte);
-            Serial.print(")");
-            
-            if (raw_msg.length >= 2) {
-                Serial.print(", Second byte: 0x");
-                Serial.print(raw_msg.second_byte, HEX);
-                Serial.print(" (");
-                Serial.print(raw_msg.second_byte);
-                Serial.print(")");
-            }
-            
-            // Validate command
-            if (raw_msg.length >= 1 && isValidCommand(raw_msg.first_byte)) {
-                Serial.println(" - VALID command");
-                
-                // Send to motor control task
-                uint8_t cmd_byte = raw_msg.first_byte;
-                if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
-                    Serial.println("[COMM] Warning: Command queue full!");
-                }
-            } else {
-                if (raw_msg.length != 1) {
-                    Serial.print(" - WRONG LENGTH (expected 1 byte, got ");
-                    Serial.print(raw_msg.length);
-                    Serial.println(" bytes)");
+            if (raw_msg.length >= 1) {
+                uint8_t first_byte = raw_msg.first_byte;
+
+                // -----------------------------------------------------------------
+                // Handshake / control messages (NOT motion commands)
+                // -----------------------------------------------------------------
+                if (first_byte == CMD_HANDSHAKE_INIT) {
+                    Serial.print("[COMM] 🤝 Handshake INIT received, protocol byte = ");
+                    Serial.println(raw_msg.second_byte);
+
+                    // Echo back an ACK with the protocol/status byte
+                    if (!espnow_send_handshake_ack(raw_msg.second_byte)) {
+                        Serial.println("[COMM] ⚠️ Failed to send HANDSHAKE_ACK");
+                    } else {
+                        Serial.println("[COMM] ✅ HANDSHAKE_ACK sent");
+                    }
+
+                    // Do NOT forward handshake frames to motor control
+                } else if (first_byte == CMD_HEARTBEAT) {
+                    // Optional future use: could feed timeout monitor here
+                    Serial.println("[COMM] 💓 HEARTBEAT frame received (ignored for now)");
                 } else {
-                    Serial.println(" - INVALID command byte (ignored)");
+                    // -----------------------------------------------------------------
+                    // Normal motion commands
+                    // -----------------------------------------------------------------
+                    if (isValidCommand(first_byte)) {
+                        uint8_t cmd_byte = first_byte;
+                        if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
+                            Serial.println("[COMM] Warning: Command queue full!");
+                        }
+                    } else {
+                        Serial.print("[COMM] ❌ INVALID command byte (ignored): 0x");
+                        Serial.println(first_byte, HEX);
+                    }
                 }
             }
         }

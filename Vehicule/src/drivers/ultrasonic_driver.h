@@ -52,10 +52,11 @@ private:
     float last_distance_;
     
     // HC-SR04 timing constants
-    static constexpr unsigned long TRIG_PULSE_US = 10;  // 10 microsecond trigger pulse
-    static constexpr unsigned long TRIG_SETTLE_US = 2;  // 2 microsecond settle time
+    static constexpr unsigned long TRIG_PULSE_US = 10;      // 10 microsecond trigger pulse
+    static constexpr unsigned long TRIG_SETTLE_US = 2;      // 2 microsecond settle time
+    static constexpr unsigned long ECHO_TIMEOUT_US = 25000; // 25 ms timeout (~4.25 m max range)
     static constexpr float SPEED_OF_SOUND_CM_PER_US = 0.034;  // cm per microsecond
-    static constexpr float DISTANCE_DIVISOR = 2.0;  // Divide by 2 (round trip)
+    static constexpr float DISTANCE_DIVISOR = 2.0;            // Divide by 2 (round trip)
 };
 
 #endif // ULTRASONIC_DRIVER_H

@@ -20,21 +20,10 @@ void task_safety_monitor(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_SAFETY_MONITOR);  // 50ms
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_SAFETY] Safety monitor task started");
-    
     // Wait for setup to complete before starting monitoring
     while (!setupComplete) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
     }
-    
-    Serial.println("[TASK_SAFETY] Initializing safety systems...");
-    // Initialize watchdog
-    watchdog_init(WATCHDOG_TIMEOUT_MS);
-    // Initialize timeout monitor
-    timeout_monitor_init(COMMAND_TIMEOUT_MS);
-    // Initialize emergency stop
-    emergency_stop_init();
-    Serial.println("[TASK_SAFETY] Safety systems ready");
     
     while (1) {
         // Feed watchdog (prevents system reset)

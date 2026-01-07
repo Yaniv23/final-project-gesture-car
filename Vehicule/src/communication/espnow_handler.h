@@ -20,10 +20,47 @@
 bool espnow_init(bool simulation_mode);
 
 /**
+ * @brief Send raw bytes to the last known sender over ESP-NOW
+ *
+ * @param data Pointer to data buffer
+ * @param len  Number of bytes to send
+ * @return true if the frame was queued for transmission, false otherwise
+ *
+ * @note This helper only works after at least one packet has been received
+ *       from the sender (so that its MAC address is known). If no sender
+ *       has been seen yet, this function returns false.
+ */
+bool espnow_send_bytes(const uint8_t* data, size_t len);
+
+/**
+ * @brief Convenience helper to send a handshake ACK frame
+ *
+ * Frame format: { CMD_HANDSHAKE_ACK, status_byte }
+ *
+ * @param status_byte Optional status / protocol version byte to echo back
+ * @return true if the frame was queued for transmission, false otherwise
+ */
+bool espnow_send_handshake_ack(uint8_t status_byte);
+
+/**
  * @brief Get MAC address as string (for debugging)
  * @param mac_str Output buffer (must be at least 18 bytes)
  * @return true if successful
  */
 bool espnow_get_mac_string(char* mac_str, size_t len);
+
+/**
+ * @brief Check if ESP-NOW connection is established
+ * @return true if connected (first message received), false otherwise
+ */
+bool espnow_is_connected();
+
+/**
+ * @brief Wait for ESP-NOW connection to be established
+ * @param timeout_ms Maximum time to wait in milliseconds
+ * @return true if connected, false if timeout expired
+ * @note In simulation mode, returns true immediately
+ */
+bool espnow_wait_for_connection(uint32_t timeout_ms);
 
 #endif // ESPNOW_HANDLER_H
