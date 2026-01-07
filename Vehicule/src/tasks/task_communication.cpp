@@ -53,40 +53,18 @@ void task_communication(void *pvParameters) {
         #else
         // Read command from ESP-NOW queue (ISR puts commands here)
         if (xQueueReceive(xESPNowQueue, &raw_msg, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
-            // Always print what we received (for debugging)
-            Serial.print("[COMM] Received message - Length: ");
-            Serial.print(raw_msg.length);
-            Serial.print(" bytes, First byte: 0x");
-            Serial.print(raw_msg.first_byte, HEX);
-            Serial.print(" (");
-            Serial.print(raw_msg.first_byte);
-            Serial.print(")");
-            
-            if (raw_msg.length >= 2) {
-                Serial.print(", Second byte: 0x");
-                Serial.print(raw_msg.second_byte, HEX);
-                Serial.print(" (");
-                Serial.print(raw_msg.second_byte);
-                Serial.print(")");
-            }
-            
             // Validate command
             if (raw_msg.length >= 1 && isValidCommand(raw_msg.first_byte)) {
-                Serial.println(" - VALID command");
-                
+             
                 // Send to motor control task
                 uint8_t cmd_byte = raw_msg.first_byte;
                 if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
                     Serial.println("[COMM] Warning: Command queue full!");
                 }
             } else {
-                if (raw_msg.length != 1) {
-                    Serial.print(" - WRONG LENGTH (expected 1 byte, got ");
-                    Serial.print(raw_msg.length);
-                    Serial.println(" bytes)");
-                } else {
-                    Serial.println(" - INVALID command byte (ignored)");
-                }
+               
+                Serial.println("[COMM] ❌ - INVALID command byte (ignored)");
+                
             }
         }
         
