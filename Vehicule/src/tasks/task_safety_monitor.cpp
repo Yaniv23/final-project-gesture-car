@@ -25,13 +25,6 @@ void task_safety_monitor(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
     }
     
-    // Initialize watchdog
-    watchdog_init(WATCHDOG_TIMEOUT_MS);
-    // Initialize timeout monitor
-    timeout_monitor_init(COMMAND_TIMEOUT_MS);
-    // Initialize emergency stop
-    emergency_stop_init();
-    
     while (1) {
         // Feed watchdog (prevents system reset)
         watchdog_feed();

@@ -31,12 +31,7 @@ void task_communication(void *pvParameters) {
     Serial.println("[TASK_COMM] Running in SIMULATION MODE - ESP-NOW disabled");
     Serial.println("[TASK_COMM] Commands can be sent directly to xCommandQueue for testing");
     #else
-    // Initialize ESP-NOW only in normal mode
-    if (!espnow_init(SIMULATION_MODE)) {
-        Serial.println("[ERROR] ESP-NOW init failed!");
-        vTaskDelete(NULL);
-        return;
-    }
+    // ESP-NOW is initialized once in main.cpp during setup()
     Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
     #endif
     
