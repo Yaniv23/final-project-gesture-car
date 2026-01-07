@@ -24,8 +24,6 @@ void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_MOTOR] Motor control task started");
-    
     // Wait for setup to complete before initializing
     while (!setupComplete) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms

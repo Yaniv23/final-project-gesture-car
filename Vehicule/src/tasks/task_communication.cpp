@@ -22,8 +22,6 @@ void task_communication(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION);  // Use config value (100ms = 10 Hz)
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_COMM] Communication task started");
-    
     // Wait for setup to complete before initializing
     while (!setupComplete) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms

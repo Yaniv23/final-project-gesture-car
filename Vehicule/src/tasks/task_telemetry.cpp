@@ -18,14 +18,10 @@ void task_telemetry(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_TELEMETRY);  // 100ms
     TickType_t lastWakeTime = xTaskGetTickCount();
     
-    Serial.println("[TASK_TELEMETRY] Telemetry task started");
-    
     // Wait for setup to complete before starting
     while (!setupComplete) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
     }
-    
-    Serial.println("[TASK_TELEMETRY] Telemetry task ready");
     
     while (1) {
         // TODO: Read motor status from xMotorStatusQueue

@@ -134,25 +134,20 @@ void setup() {
         Serial.println("[ERROR] Failed to initialize MotorDriver!");
         while (1) delay(1000);  // Halt on error
     }
-    Serial.println("[SETUP] MotorDriver initialized with individual enable pins:");
-    Serial.println("       Front Left:  EN=" + String(FRONT_LEFT_EN) + ", IN1=" + String(FRONT_LEFT_IN1) + ", IN2=" + String(FRONT_LEFT_IN2));
-    Serial.println("       Front Right: EN=" + String(FRONT_RIGHT_EN) + ", IN1=" + String(FRONT_RIGHT_IN1) + ", IN2=" + String(FRONT_RIGHT_IN2));
-    Serial.println("       Back Left:   EN=" + String(BACK_LEFT_EN) + ", IN1=" + String(BACK_LEFT_IN1) + ", IN2=" + String(BACK_LEFT_IN2));
-    Serial.println("       Back Right:  EN=" + String(BACK_RIGHT_EN) + ", IN1=" + String(BACK_RIGHT_IN1) + ", IN2=" + String(BACK_RIGHT_IN2));
     
     // Ensure all motors are stopped initially (safety measure)
     motor_driver.stopAll();
-    Serial.println("[SETUP] All motors set to STOP state (safety)");
     
     // Initialize safety systems
     Serial.println("[SETUP] Initializing safety systems...");
     watchdog_init(WATCHDOG_TIMEOUT_MS);
     timeout_monitor_init(COMMAND_TIMEOUT_MS);
     emergency_stop_init();
-    Serial.println("[SETUP] Safety systems initialized");
     
     // Create FreeRTOS tasks
+    Serial.println("========================================");
     Serial.println("[SETUP] Creating FreeRTOS tasks...");
+    Serial.println("========================================");
     
     // Task 1: Safety Monitor (Highest Priority - 5)
     xTaskCreate(
@@ -226,8 +221,9 @@ void setup() {
     Serial.println("[SETUP] Created task: TestCommands (Priority 1) - SIMULATION MODE");
     #endif
     
-    Serial.println("\n[SETUP] All tasks created successfully!");
-    Serial.println("[SETUP] Signaling tasks that setup is complete...");
+    Serial.println("========================================");
+    Serial.println("[SETUP] All tasks created successfully!");
+    Serial.println("========================================");
     
     // Signal all tasks that setup is complete
     setupComplete = true;
@@ -235,7 +231,7 @@ void setup() {
     // Give tasks a moment to start
     delay(100);
     
-    Serial.println("[SETUP] System ready - FreeRTOS scheduler running!\n");
+    Serial.println("[SETUP] System ready 🎉- FreeRTOS scheduler running!\n");
 }
 
 void loop() {
