@@ -18,20 +18,20 @@ ser = None
 
 # === Command Mapping (matches Vehicule/src/communication/command_protocol.h) ===
 COMMAND_MAP = {
-    "Stop": 0x00,                    # CMD_STOP
-    "Forward": 0x01,                 # CMD_FORWARD
-    "Backward": 0x02,                # CMD_BACKWARD
-    "Sideway_Left": 0x03,            # CMD_STRAFE_LEFT
-    "Sideway_Right": 0x04,           # CMD_STRAFE_RIGHT
-    "rotate_cw": 0x05,               # CMD_ROTATE_CW
-    "rotate_ccw": 0x06,              # CMD_ROTATE_CCW
-    "diagonal_forward_left": 0x07,   # CMD_DIAGONAL_FORWARD_LEFT
-    "diagonal_forward_right": 0x08,  # CMD_DIAGONAL_FORWARD_RIGHT
-    "diagonal_backward_left": 0x09,  # CMD_DIAGONAL_BACKWARD_LEFT
-    "diagonal_backward_right": 0x0A, # CMD_DIAGONAL_BACKWARD_RIGHT
-    "pivot_left": 0x0B,              # CMD_PIVOT_LEFT
-    "pivot_right": 0x0C,             # CMD_PIVOT_RIGHT
-    "Center": 0x00,                  # Treat center as STOP
+    "STOP": 0x00,                    # CMD_STOP
+    "FORWARD": 0x01,                 # CMD_FORWARD
+    "BACKWARD": 0x02,                # CMD_BACKWARD
+    "SIDEWAY_LEFT": 0x03,            # CMD_SIDEWAY_LEFT
+    "SIDEWAY_RIGHT": 0x04,           # CMD_SIDEWAY_RIGHT
+    "ROTATE_CW": 0x05,               # CMD_ROTATE_CW
+    "ROTATE_CCW": 0x06,              # CMD_ROTATE_CCW
+    "DIAGONAL_315": 0x07,            # CMD_DIAGONAL_315 (diagonal backward right)
+    "DIAGONAL_45": 0x08,             # CMD_DIAGONAL_45 (diagonal forward right)
+    "DIAGONAL_225": 0x09,            # CMD_DIAGONAL_225 (diagonal backward left)
+    "DIAGONAL_135": 0x0A,            # CMD_DIAGONAL_135 (diagonal forward left)
+    "PIVOT_LEFT": 0x0B,              # CMD_PIVOT_LEFT
+    "PIVOT_RIGHT": 0x0C,             # CMD_PIVOT_RIGHT
+    "CENTER": 0x00,                  # Treat center as STOP
 }
 
 def find_available_ports():
@@ -62,29 +62,29 @@ except serial.SerialException as e:
 
 # Stability filtering
 last_detected = ""
-current_display = "Stop"  # Initialize to Stop so we can send immediately
+current_display = "STOP"  # Initialize to STOP so we can send immediately
 stable_counter = 0
 stable_threshold = 10  # Frames needed to confirm a new label
 
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
-        return "Sideway_Right"
+        return "SIDEWAY_RIGHT"
     elif 22.5 < angle_deg <= 67.5:
-        return "diagonal_forward_right"
+        return "DIAGONAL_45"  # diagonal forward right
     elif 67.5 < angle_deg <= 112.5:
-        return "Forward"
+        return "FORWARD"
     elif 112.5 < angle_deg <= 157.5:
-        return "diagonal_forward_left"
+        return "DIAGONAL_135"  # diagonal forward left
     elif 157.5 < angle_deg or angle_deg <= -157.5:
-        return "Sideway_Left"
+        return "SIDEWAY_LEFT"
     elif -157.5 < angle_deg <= -112.5:
-        return "diagonal_backward_left"
+        return "DIAGONAL_225"  # diagonal backward left
     elif -112.5 < angle_deg <= -67.5:
-        return "Backward"
+        return "BACKWARD"
     elif -67.5 < angle_deg <= -22.5:
-        return "diagonal_backward_right"
+        return "DIAGONAL_315"  # diagonal backward right
     else:
-        return "Center"
+        return "CENTER"
 
 def is_hand_closed(landmarks):
     fingers = {
@@ -98,17 +98,6 @@ def is_hand_closed(landmarks):
         if landmarks[tip_idx].y > landmarks[pip_idx].y:
             bent_count += 1
     return bent_count == 4
-
-def is_index_finger_up(landmarks):
-    return (
-        landmarks[8].y < landmarks[6].y and
-        landmarks[12].y > landmarks[10].y and
-        landmarks[16].y > landmarks[14].y and
-        landmarks[20].y > landmarks[18].y
-    )
-
-def is_index_finger_down(landmarks):
-    return landmarks[8].y > landmarks[6].y
 
 def is_hand_open(landmarks):
     return (
@@ -189,9 +178,10 @@ def main():
 
        # Draw axes and center neutral zone
         cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 1)
-        cv2.line(frame, (0, cy), (w, cy), (200, 200, 200), 1)
-        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 1)        # Diagonal ↘️
-        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 1)        # Diagonal ↙️
+        # Horizontal line for sideway command zone - thicker and more visible
+        cv2.line(frame, (0, cy), (w, cy), (180, 180, 180), 2)  # Cyan, thicker line for sideway zone
+        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 2)        # Diagonal ↘️
+        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 2)        # Diagonal ↙️
         cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 1)
 
         detected_label = ""
@@ -211,19 +201,14 @@ def main():
 
             # === GESTURE DECISION TREE ===
             
-            
-            if is_index_finger_up(landmarks):
-                detected_label = "Forward"
-            elif is_hand_closed(landmarks):
-                detected_label = "Stop"
+            if is_hand_closed(landmarks):
+                detected_label = "STOP"
             elif is_circle_ccw(landmarks, w, h):
-                detected_label = "rotate_ccw"
+                detected_label = "ROTATE_CCW"
             elif is_circle_cw(landmarks, w, h):
-                detected_label = "rotate_cw"    
-            elif is_index_finger_down(landmarks):
-                detected_label = "Backward"
+                detected_label = "ROTATE_CW"    
             elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-                detected_label = "Center"
+                detected_label = "CENTER"
             else:
                 detected_label = get_direction_label(angle_deg)
 
@@ -232,8 +217,8 @@ def main():
             cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
             cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
         else:
-            # No hand detected - send Stop command
-            detected_label = "Stop"
+            # No hand detected - send STOP command
+            detected_label = "STOP"
 
         # Stability filter (applies to both hand detected and no hand detected)
         if detected_label == last_detected:
@@ -253,7 +238,7 @@ def main():
             if ser and ser.is_open:
                 try:
                     # Look up binary command byte; default to STOP (0x00) if unknown
-                    cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["Stop"])
+                    cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
                     # Send as text string (decimal) with newline - ESP32 expects "7\n" or "0x07\n"
                     # Format: "<cmd>\n" where cmd can be decimal or hex
                     cmd_str = f"{cmd_byte}\n"
@@ -283,12 +268,20 @@ def main():
 
         # Display label
         color = {
-            "Stop": (0, 0, 255),
-            "Forward": (0, 255, 0),
-            "Downward": (255, 255, 0),
-            "Turn_CW": (255, 0, 255),
-            "Turn_CCW": (0, 255, 255),
-            "Center": (100, 100, 255)
+            "STOP": (0, 0, 255),
+            "FORWARD": (0, 255, 0),
+            "BACKWARD": (255, 255, 0),
+            "ROTATE_CW": (255, 0, 255),
+            "ROTATE_CCW": (0, 255, 255),
+            "CENTER": (100, 100, 255),
+            "SIDEWAY_LEFT": (255, 165, 0),
+            "SIDEWAY_RIGHT": (255, 165, 0),
+            "DIAGONAL_45": (0, 255, 255),
+            "DIAGONAL_135": (0, 255, 255),
+            "DIAGONAL_225": (0, 255, 255),
+            "DIAGONAL_315": (0, 255, 255),
+            "PIVOT_LEFT": (255, 0, 128),
+            "PIVOT_RIGHT": (255, 0, 128)
         }.get(current_display, (0, 255, 255))
 
         cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
