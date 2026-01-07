@@ -100,44 +100,25 @@ int commandToInt(const char* command) {
 }
 
 void onReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *data, int len) {
-  Serial.println("\n========================================");
-  Serial.println("[ESP-NOW] 📡 Message received!");
-  Serial.println("========================================");
-  
   if (len != sizeof(incomingMsg)) {
-    Serial.print("❌ Invalid message size. Expected: ");
+    Serial.print("Invalid message size. Expected: ");
     Serial.print(sizeof(incomingMsg));
-    Serial.print(", Got: ");
+    Serial.print(", got: ");
     Serial.println(len);
     return;
   }
 
   memcpy((void*)&incomingMsg, data, sizeof(incomingMsg));
 
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-           recvInfo->src_addr[0], recvInfo->src_addr[1], recvInfo->src_addr[2],
-           recvInfo->src_addr[3], recvInfo->src_addr[4], recvInfo->src_addr[5]);
-  Serial.print("[ESP-NOW] 📡 From MAC: ");
-  Serial.println(macStr);
-  Serial.print("[ESP-NOW] 📥 Raw command string: \"");
-  Serial.print(incomingMsg.command);
-  Serial.println("\"");
-
-  Serial.println("[PARSER] 🔍 Converting command to integer...");
   cmd = commandToInt(incomingMsg.command);
   newCommand = true;
 
   if (cmd == -1) {
-    Serial.println("[PARSER] ❓ Unknown command - not recognized");
-    Serial.println("         Available commands: Stop, Forward, Backward, Sideway_Left, Sideway_Right,");
-    Serial.println("         rotate_cw, rotate_ccw, diagonal_forward_left, etc.");
+    Serial.println("Unknown command - not recognized");
   } else {
-    Serial.print("[PARSER] ✅ Command successfully mapped to code: ");
+    Serial.print("Command mapped to code: ");
     Serial.println(cmd);
-    Serial.println("[PARSER] ⏳ Command queued for processing in loop()");
   }
-  Serial.println("========================================\n");
 }
 
 long readDistanceCM();
@@ -146,12 +127,8 @@ void updateServoSensor();
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  
-  Serial.println("\n========================================");
-  Serial.println("🚗 Gesture Car ESP32 - TEST MODE");
-  Serial.println("========================================");
-  Serial.println("⚠️ Hardware disabled - Testing ESP-NOW only");
-  Serial.println("========================================\n");
+  Serial.println("Gesture Car ESP32 - TEST MODE");
+  Serial.println("Hardware disabled - testing ESP-NOW only");
 
   // MOTOR PINS - Initialize motor pins as outputs
   pinMode(FrontR_IN1, OUTPUT);
@@ -166,7 +143,6 @@ void setup() {
   pinMode(BackL_IN3, OUTPUT);
   pinMode(BackL_IN4, OUTPUT);
   pinMode(BackL_ENA, OUTPUT);
-  Serial.println("[TEST] Motor pins initialization skipped");
 
   // SERVO + SENSOR DISABLED FOR TESTING
   // Servo + sensor setup
@@ -177,7 +153,6 @@ void setup() {
   lastServoStepMs = millis();
   sweepFinishedMs = millis();
   sweepResting = false;
-  Serial.println("[TEST] Servo and sensor initialization skipped");
 
   // Initialize all motors to stopped state (simulated)
   stop_motors();
@@ -186,37 +161,32 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(); // Disconnect from any previous connection
   delay(200); // Give WiFi time to initialize
-  Serial.println("🔧 ESP32 set to STA mode");
+  Serial.println("ESP32 set to STA mode");
   
   // Print MAC address using esp_wifi_get_mac
   uint8_t mac[6];
   esp_wifi_get_mac(WIFI_IF_STA, mac);
-  Serial.print("📡 MAC Address: ");
+  Serial.print("MAC Address: ");
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   Serial.println(macStr);
 
   if (esp_now_init() != ESP_OK) {
-    Serial.println("❌ ESP-NOW init failed");
+    Serial.println("ESP-NOW init failed");
     return;
   }
 
   esp_now_register_recv_cb(onReceive);
-  Serial.println("🟢 Ready to receive ESP-NOW messages");
-  Serial.println("🟢 Command parser initialized");
-  Serial.println("\n📡 Waiting for ESP-NOW commands...");
-  Serial.println("   (Send commands from sender ESP32)\n");
+  Serial.println("Ready to receive ESP-NOW messages");
+  Serial.println("Command parser initialized");
+  Serial.println("Waiting for ESP-NOW commands...");
 }
 
 void loop() {
   // Check for new command from ESP-NOW
   if (newCommand) {
     newCommand = false; // Reset flag
-    
-    Serial.println("\n[LOOP] Processing command in switch statement...");
-    Serial.print("[LOOP] Command code: ");
-    Serial.println(cmd);
     
     // Execute motor command based on integer code (simulated)
     switch (cmd) {
@@ -236,8 +206,6 @@ void loop() {
       default:
         Serial.println("Unknown command code");
     }
-    
-    Serial.println("[LOOP] ✅ Command processed successfully\n");
     cmd = -1; // Reset command
   }
   

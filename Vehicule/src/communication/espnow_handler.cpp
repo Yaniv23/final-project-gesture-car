@@ -11,6 +11,7 @@
 #include <esp_now.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
 #include <string.h>
 #include "../shared/queues.h"
 #include "../shared/types.h"
@@ -38,9 +39,15 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     }
 
     // Cache the sender MAC on first valid packet so we can reply later
+    // Note: We write sender_mac_known AFTER memcpy to ensure atomicity
+    // The flag acts as a guard - once true, sender_mac is stable
     if (!sender_mac_known && mac_addr != nullptr) {
+        // Copy MAC address atomically (6 bytes, but we're in ISR so no task can interrupt)
         memcpy(sender_mac, mac_addr, 6);
+        // Memory barrier to ensure write completes before flag is set
+        __sync_synchronize();
         sender_mac_known = true;
+        // Note: Serial.print in ISR is not ideal but acceptable for one-time debug output
         Serial.print("[ESP-NOW] Learned sender MAC: ");
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -121,15 +128,23 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
         return false;
     }
 
+    // Check if sender MAC is known (read volatile flag)
     if (!sender_mac_known) {
         Serial.println("[ESP-NOW] Cannot send: sender MAC unknown (no packets received yet)");
         return false;
     }
 
+    // Copy MAC address to local variable in critical section to prevent race condition
+    // This ensures we read a consistent snapshot even if ISR updates it
+    uint8_t local_mac[6];
+    taskENTER_CRITICAL();
+    memcpy(local_mac, sender_mac, 6);
+    taskEXIT_CRITICAL();
+
     // Lazily add sender as a peer the first time we try to send back
     if (!sender_peer_added) {
         esp_now_peer_info_t peerInfo = {};
-        memcpy(peerInfo.peer_addr, sender_mac, 6);
+        memcpy(peerInfo.peer_addr, local_mac, 6);
         peerInfo.channel = 0;      // Use current WiFi channel
         peerInfo.encrypt = false;  // No encryption for now
 
@@ -142,7 +157,7 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
         sender_peer_added = true;
     }
 
-    esp_err_t res = esp_now_send(sender_mac, data, len);
+    esp_err_t res = esp_now_send(local_mac, data, len);
     if (res != ESP_OK) {
         Serial.print("[ESP-NOW] esp_now_send failed, error: ");
         Serial.println(res);
