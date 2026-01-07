@@ -23,6 +23,7 @@ extern volatile bool setupComplete;
 void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
+    uint8_t last_logged_cmd = 0xFF;  // Track last logged command to avoid duplicate prints
     
     // Wait for setup to complete before initializing
     while (!setupComplete) {
@@ -64,6 +65,8 @@ void task_motor_control(void *pvParameters) {
         // Emergency stop is NOT active - proceed with normal command processing
         // Try to get command from queue
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
+            // Decide if we need to log this command (only when it changes)
+            bool shouldLog = (cmd_byte != last_logged_cmd);
             // Double-check emergency stop flag (race condition protection)
             if (emergency_stop_is_active()) {
                 motion_stop();
@@ -82,62 +85,67 @@ void task_motor_control(void *pvParameters) {
                 switch (cmd_byte) {
                 case CMD_STOP:
                     motion_stop();
-                    Serial.println("[MOTOR] STOP");
+                    if (shouldLog) Serial.println("[MOTOR] STOP");
                     break;
                 case CMD_FORWARD:
                     motion_forward();
-                    Serial.println("[MOTOR] FORWARD");
+                    if (shouldLog) Serial.println("[MOTOR] FORWARD");
                     break;
                 case CMD_BACKWARD:
                     motion_backward();
-                    Serial.println("[MOTOR] BACKWARD");
+                    if (shouldLog) Serial.println("[MOTOR] BACKWARD");
                     break;
                 case CMD_SIDEWAY_LEFT:
                     motion_sideway_left();
-                    Serial.println("[MOTOR] SIDEWAY_LEFT");
+                    if (shouldLog) Serial.println("[MOTOR] SIDEWAY_LEFT");
                     break;
                 case CMD_SIDEWAY_RIGHT:
                     motion_sideway_right();
-                    Serial.println("[MOTOR] SIDEWAY_RIGHT");
+                    if (shouldLog) Serial.println("[MOTOR] SIDEWAY_RIGHT");
                     break;
                 case CMD_ROTATE_CW:
                     motion_rotate_cw();
-                    Serial.println("[MOTOR] ROTATE_CW");
+                    if (shouldLog) Serial.println("[MOTOR] ROTATE_CW");
                     break;
                 case CMD_ROTATE_CCW:
                     motion_rotate_ccw();
-                    Serial.println("[MOTOR] ROTATE_CCW");
+                    if (shouldLog) Serial.println("[MOTOR] ROTATE_CCW");
                     break;
                 case CMD_DIAGONAL_315:
                     motion_diagonal_315();
-                    Serial.println("[MOTOR] DIAGONAL_315");
+                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_315");
                     break;
                 case CMD_DIAGONAL_45:
                     motion_diagonal_45();
-                    Serial.println("[MOTOR] DIAGONAL_45");
+                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_45");
                     break;
                 case CMD_DIAGONAL_225:
                     motion_diagonal_225();
-                    Serial.println("[MOTOR] DIAGONAL_225");
+                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_225");
                     break;
                 case CMD_DIAGONAL_135:
                     motion_diagonal_135();
-                    Serial.println("[MOTOR] DIAGONAL_135");
+                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_135");
                     break;
                 case CMD_PIVOT_LEFT:
                     motion_pivot_left();
-                    Serial.println("[MOTOR] PIVOT_LEFT");
+                    if (shouldLog) Serial.println("[MOTOR] PIVOT_LEFT");
                     break;
                 case CMD_PIVOT_RIGHT:
                     motion_pivot_right();
-                    Serial.println("[MOTOR] PIVOT_RIGHT");
+                    if (shouldLog) Serial.println("[MOTOR] PIVOT_RIGHT");
                     break;
                 default:
-                    Serial.print("[MOTOR] Unknown command byte: 0x");
-                    Serial.println(cmd_byte, HEX);
+                    if (shouldLog) {
+                        Serial.print("[MOTOR] Unknown command byte: 0x");
+                        Serial.println(cmd_byte, HEX);
+                    }
                     motion_stop();  // Safety: stop on unknown command
                     break;
                 }
+                
+                // Update last logged command after successful handling
+                last_logged_cmd = cmd_byte;
                 
                 // Return semaphore after command execution
                 xSemaphoreGive(xSafetySemaphore);
