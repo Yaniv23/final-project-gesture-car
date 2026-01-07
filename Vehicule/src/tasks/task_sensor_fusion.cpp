@@ -44,11 +44,15 @@ void task_sensor_fusion(void *pvParameters) {
         servo.update();
         
         // Read distance (matching: lastDistanceCm = readDistanceCM())
+        // NOTE: we only perform a single distance measurement per loop
+        //       iteration to keep execution time bounded and avoid
+        //       starving the idle task / task watchdog.
         float distance = ultrasonic.readDistanceCM();
         
         // Check for obstacles (matching Vehicule_Controller.ino logic)
         // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM)
-        bool obstacle_detected = ultrasonic.isObstacle(EMERGENCY_STOP_DISTANCE_CM);
+        bool obstacle_detected =
+            (distance > 0.0f && distance < EMERGENCY_STOP_DISTANCE_CM);
         
         // Only log and change state when obstacle status changes
         if (obstacle_detected && !prev_obstacle) {

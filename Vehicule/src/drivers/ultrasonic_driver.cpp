@@ -46,7 +46,9 @@ float Ultrasonic::readDistanceCM() {
     
     // Read echo pulse duration
     // pulseIn returns duration in microseconds, or 0 if timeout
-    long duration = pulseIn(echo_pin_, HIGH);
+    // NOTE: use explicit timeout to avoid long blocking that can starve the
+    //       FreeRTOS idle task and trigger the ESP32 task watchdog.
+    long duration = pulseIn(echo_pin_, HIGH, ECHO_TIMEOUT_US);
     
     // Calculate distance (matching Vehicule_Controller.ino formula)
     // distance = (duration * 0.034) / 2
