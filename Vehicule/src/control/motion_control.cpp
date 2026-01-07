@@ -137,12 +137,12 @@ void motion_diagonal_315() {
         return;
     }
 
-    // FR: Forward, FL: Stop, BR: Stop, BL: Forward
+    // FR: Forward, BL: Forward (others stopped)
     int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
 }
 
 void motion_diagonal_45() {
@@ -150,12 +150,13 @@ void motion_diagonal_45() {
         return;
     }
 
-
-    // FR: Stop, FL: Forward, BR: Forward, BL: Stop
+    // FL: Forward, BR: Forward (others stopped)
+    // Set active motors first, then stopped motors
     int16_t speed = getMotorSpeed();
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    // Then stop the other motors
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
 
@@ -164,13 +165,14 @@ void motion_diagonal_225() {
         return;
     }
 
-
-    // FR: Backward, FL: Stop, BR: Stop, BL: Backward
+    // FR: Backward, BL: Backward (others stopped)
+    // Set active motors first, then stopped motors
     int16_t speed = -getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    // Then stop the other motors
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
 }
 
 void motion_diagonal_135() {
@@ -178,11 +180,13 @@ void motion_diagonal_135() {
         return;
     }
 
-    // FR: Stop, FL: Backward, BR: Backward, BL: Stop
+    // FL: Backward, BR: Backward (others stopped)
+    // Set active motors first, then stopped motors
     int16_t speed = -getMotorSpeed();
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    // Then stop the other motors
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
 

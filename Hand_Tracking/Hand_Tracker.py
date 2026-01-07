@@ -38,11 +38,47 @@ def find_available_ports():
         available.append(port.device)
     return available
 
-try:
-    ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
-    time.sleep(2)
-except serial.SerialException:
-    pass
+def connect_serial(port=None, baud=115200, retries=3):
+    """Connect to serial port with retry logic and error reporting"""
+    target_port = COM_PORT
+    
+    # First, list available ports
+    available_ports = find_available_ports()
+    print(f"[Serial] Available ports: {available_ports}")
+    
+    if not available_ports:
+        print("[ERROR] No serial ports found! Is the ESP32 connected?")
+        return None
+    
+    # Check if target port is available
+    if target_port not in available_ports:
+        print(f"[WARNING] Port {target_port} not found in available ports!")
+        print(f"[INFO] Trying first available port: {available_ports[0]}")
+        target_port = available_ports[0]
+    
+    # Try to connect with retries
+    for attempt in range(retries):
+        try:
+            print(f"[Serial] Attempting to connect to {target_port} at {baud} baud (attempt {attempt + 1}/{retries})...")
+            connection = serial.Serial(target_port, baud, timeout=0.1)
+            time.sleep(2)  # Wait for connection to stabilize
+            if connection.is_open:
+                print(f"[SUCCESS] Connected to {target_port} at {baud} baud")
+                return connection
+        except serial.SerialException as e:
+            print(f"[ERROR] Serial connection failed (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(1)
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during serial connection: {e}")
+            if attempt < retries - 1:
+                time.sleep(1)
+    
+    print(f"[ERROR] Failed to connect to {target_port} after {retries} attempts")
+    return None
+
+# Try to connect to serial port
+ser = connect_serial(COM_PORT, BAUD_RATE)
 
 last_detected = ""
 current_display = "STOP"
@@ -105,6 +141,13 @@ def is_circle_cw(landmarks, w, h):
 def main():
     """Main function for hand tracking - can be called from other modules"""
     global cap, ser, last_detected, current_display, stable_counter, hands
+    
+    # Check serial connection status
+    if ser is None or not ser.is_open:
+        print("[WARNING] Serial connection not available. Attempting to reconnect...")
+        ser = connect_serial(COM_PORT, BAUD_RATE)
+        if ser is None or not ser.is_open:
+            print("[WARNING] Running without serial connection. Commands will be printed but not sent.")
     
     if hands is None:
         hands = mp_hands.Hands()
@@ -206,23 +249,32 @@ def main():
                     try:
                         cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
                         cmd_str = f"{cmd_byte}\n"
-                        ser.write(cmd_str.encode('utf-8'))
-                        print(f"Sent: {current_display}")
+                        bytes_written = ser.write(cmd_str.encode('utf-8'))
+                        ser.flush()  # Ensure data is sent immediately
+                        print(f"Sent: {current_display} (byte: {cmd_byte}, bytes written: {bytes_written})")
                         last_sent_command = current_display
+                    except serial.SerialException as e:
+                        print(f"[ERROR] Serial write error: {e}")
+                        print("[INFO] Attempting to reconnect...")
+                        ser = connect_serial(COM_PORT, BAUD_RATE)
                     except Exception as e:
-                        print("Serial write error:", e)
+                        print(f"[ERROR] Unexpected serial error: {e}")
                 else:
-                    print(f"Sent: {current_display}")
+                    print(f"[NO SERIAL] Would send: {current_display} (byte: {COMMAND_MAP.get(current_display, COMMAND_MAP['STOP'])})")
                     last_sent_command = current_display
             last_send_time = current_time                
         if ser and ser.is_open:
             try:
                 if ser.in_waiting:
-                    line = ser.readline().decode('utf-8').strip()
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
-                        print("ESP32:", line)
+                        print(f"[ESP32] {line}")
+            except serial.SerialException as e:
+                print(f"[ERROR] Serial read error: {e}")
+                print("[INFO] Attempting to reconnect...")
+                ser = connect_serial(COM_PORT, BAUD_RATE)
             except Exception as e:
-                print("Serial read error:", e)
+                print(f"[ERROR] Unexpected serial read error: {e}")
         color = {
             "STOP": (0, 0, 255),
             "FORWARD": (0, 255, 0),
