@@ -47,7 +47,7 @@ except serial.SerialException:
 last_detected = ""
 current_display = "STOP"
 stable_counter = 0
-stable_threshold = 10
+stable_threshold = 6
 
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
@@ -129,6 +129,7 @@ def main():
     frame_count = 0
     iteration_count = 0
     last_send_time = 0
+    last_sent_command = None
     send_interval = 0.2
     while True:
         iteration_count += 1
@@ -200,17 +201,20 @@ def main():
 
         current_time = time.time()
         if current_display and (current_time - last_send_time) >= send_interval:
-            if ser and ser.is_open:
-                try:
-                    cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
-                    cmd_str = f"{cmd_byte}\n"
-                    ser.write(cmd_str.encode('utf-8'))
-                    last_send_time = current_time
-                except Exception as e:
-                    print("Serial write error:", e)
-            else:
-                last_send_time = current_time
-
+            if last_sent_command != current_display:
+                if ser and ser.is_open:
+                    try:
+                        cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
+                        cmd_str = f"{cmd_byte}\n"
+                        ser.write(cmd_str.encode('utf-8'))
+                        print(f"Sent: {current_display}")
+                        last_sent_command = current_display
+                    except Exception as e:
+                        print("Serial write error:", e)
+                else:
+                    print(f"Sent: {current_display}")
+                    last_sent_command = current_display
+            last_send_time = current_time                
         if ser and ser.is_open:
             try:
                 if ser.in_waiting:
