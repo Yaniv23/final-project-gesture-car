@@ -40,6 +40,13 @@ static int16_t getMotorSpeed() {
     return (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT;
 }
 
+// Get reduced motor speed (60% of normal speed) for non-forward/backward movements
+// 40% slower = 60% of original speed
+static int16_t getMotorSpeedReduced() {
+    // Return 60% of normal speed (0.6 * getMotorSpeed())
+    return (getMotorSpeed() * 6) / 10;  // Integer math: 60% = 6/10
+}
+
 void motion_init(MotorDriver* motor_driver) {
     if (motor_driver == nullptr) {
         Serial.println("[ERROR] MotionControl: motor_driver is null");
@@ -87,26 +94,23 @@ void motion_sideway_left() {
         return;
     }
 
-    // INVERTED: FR: Backward, FL: Forward, BR: Forward, BL: Backward
-    int16_t speed = getMotorSpeed();
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
-}
-
-void motion_sideway_right() {
-    if (!checkInitialized()) {
-        return;
-    }
-
-    // INVERTED: FR: Forward, FL: Backward, BR: Backward, BL: Forward
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
 }
+
+
+void motion_sideway_right() {
+    if (!checkInitialized()) {
+        return;
+    }
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
 
 void motion_rotate_cw() {
     if (!checkInitialized()) {
@@ -114,7 +118,7 @@ void motion_rotate_cw() {
     }
 
     // INVERTED: FR: Forward, FL: Backward, BR: Forward, BL: Backward
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
@@ -127,7 +131,7 @@ void motion_rotate_ccw() {
     }
 
     // INVERTED: FR: Backward, FL: Forward, BR: Backward, BL: Forward
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
@@ -140,7 +144,7 @@ void motion_diagonal_315() {
     }
 
     // INVERTED: FR: Backward, BL: Backward (others stopped)
-    int16_t speed = -getMotorSpeed();
+    int16_t speed = -getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
@@ -154,7 +158,7 @@ void motion_diagonal_45() {
 
     // INVERTED: FL: Backward, BR: Backward (others stopped)
     // Set active motors first, then stopped motors
-    int16_t speed = -getMotorSpeed();
+    int16_t speed = -getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     // Then stop the other motors
@@ -169,7 +173,7 @@ void motion_diagonal_225() {
 
     // INVERTED: FR: Forward, BL: Forward (others stopped)
     // Set active motors first, then stopped motors
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
     // Then stop the other motors
@@ -184,7 +188,7 @@ void motion_diagonal_135() {
 
     // INVERTED: FL: Forward, BR: Forward (others stopped)
     // Set active motors first, then stopped motors
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     // Then stop the other motors
@@ -198,7 +202,7 @@ void motion_pivot_left() {
     }
 
     // INVERTED: FR: Backward, FL: Forward (others stopped)
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
@@ -211,7 +215,7 @@ void motion_pivot_right() {
     }
 
     // INVERTED: FR: Forward, FL: Backward (others stopped)
-    int16_t speed = getMotorSpeed();
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
