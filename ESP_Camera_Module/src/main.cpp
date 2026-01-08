@@ -1,12 +1,32 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include "esp_camera.h"
-#include "esp_http_server.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/message_buffer.h"
 
 // =================== USER SETTINGS ===================
 // Change these to match your WiFi network
 const char *WIFI_SSID     = "iPhone de Yaniv";
 const char *WIFI_PASSWORD = "12345678";
+
+// =================== UDP CONFIGURATION ===================
+// Configuration UDP - Changez l'IP pour correspondre à votre PC
+// Pour trouver votre IP: hostname -I  ou  ip addr show wlo1
+const char* TARGET_IP = "172.20.10.7";  // IP de votre PC (trouvée via ip addr)
+const int UDP_PORT = 5000;
+
+// UDP fragmentation settings
+const size_t UDP_PACKET_MAX_SIZE = 1400;  // Safe size for WiFi MTU (1500 - headers)
+const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;  // 8 bytes for header
+
+// Packet header structure (8 bytes)
+struct PacketHeader {
+  uint32_t frame_id;        // Frame sequence number
+  uint16_t fragment_id;     // Fragment number (0-based)
+  uint16_t total_fragments;  // Total number of fragments
+};
 
 // =================== CAMERA PINS (OV2640 on ESP32-S3) ===================
 // These pins are taken from your existing S3 camera config (camerapins.h)
@@ -29,104 +49,116 @@ const char *WIFI_PASSWORD = "12345678";
 #define HREF_GPIO_NUM    7
 #define PCLK_GPIO_NUM    13
 
-// =================== SIMPLE MJPEG STREAM HANDLER ===================
+// =================== UDP STREAMING ===================
 
-static const char *STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=frame";
-static const char *STREAM_BOUNDARY     = "\r\n--frame\r\n";
-static const char *STREAM_PART         = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+// Message buffer for inter-task communication
+MessageBufferHandle_t frame_buffer;
 
-// Called by the HTTP server when a client requests /stream
-static esp_err_t stream_handler(httpd_req_t *req) {
-  camera_fb_t *fb = nullptr;
-  esp_err_t res;
-
-  // Tell the browser this is an MJPEG stream
-  res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) {
-    return res;
-  }
-
-  // Endless loop: capture a frame, send it, repeat
+// Camera task: captures frames and sends them to the message buffer
+void cam_task(void *pvParameters) {
+  Serial.println("Camera task started");
+  
   while (true) {
-    fb = esp_camera_fb_get();
+    camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("Camera capture failed");
-      return ESP_FAIL;
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
     }
 
-    // Send boundary between frames
-    res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    if (res != ESP_OK) {
+    // Send frame to message buffer
+    // Check if frame fits in buffer (max 35000 bytes)
+    if (fb->len > 35000) {
+      Serial.printf("Frame too large (%d bytes) - frame dropped\n", fb->len);
       esp_camera_fb_return(fb);
-      break;
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
+    }
+    
+    size_t sent = xMessageBufferSend(frame_buffer, (void *)fb->buf, fb->len, 0);
+    if (sent != fb->len) {
+      Serial.println("Frame buffer full - frame dropped");
     }
 
-    // Send JPEG headers (size of the image)
-    char header[64];
-    int hlen = snprintf(header, sizeof(header), STREAM_PART, fb->len);
-    res = httpd_resp_send_chunk(req, header, hlen);
-    if (res != ESP_OK) {
-      esp_camera_fb_return(fb);
-      break;
-    }
-
-    // Send the image bytes
-    res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+    // Return frame buffer to camera
     esp_camera_fb_return(fb);
-
-    if (res != ESP_OK) {
-      break;
-    }
+    
+    // Small delay to prevent WDT reset
+    vTaskDelay(1 / portTICK_PERIOD_MS);
   }
-
-  return res;
 }
 
-// Simple index page: shows the video using an <img> tag
-static esp_err_t index_handler(httpd_req_t *req) {
-  const char html[] =
-      "<!DOCTYPE html>"
-      "<html>"
-      "<head><meta charset='UTF-8'><title>ESP32-S3 Camera</title></head>"
-      "<body style='margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh;'>"
-      "<img src='/stream' style='width:90vw; height:auto; max-height:90vh; object-fit:contain;' />"
-      "</body>"
-      "</html>";
+// UDP client task: reads frames from message buffer and sends via UDP
+// Static buffer to avoid stack overflow (35000 bytes is too large for stack)
+static uint8_t frame_buffer_data[35000];
+static uint32_t frame_counter = 0;
 
-  httpd_resp_set_type(req, "text/html");
-  return httpd_resp_send(req, html, strlen(html));
-}
+void udp_client_task(void *pvParameters) {
+  Serial.println("UDP client task started");
+  
+  WiFiUDP udp;
+  
+  while (true) {
+    // Wait for WiFi connection
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("UDP task: Waiting for WiFi...");
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      continue;
+    }
 
-// Start a very small HTTP server with 2 endpoints:
-//   /      -> simple HTML page with <img>
-//   /stream -> MJPEG video stream
-void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 80;
-
-  httpd_handle_t server = nullptr;
-  if (httpd_start(&server, &config) == ESP_OK) {
-    httpd_uri_t index_uri = {
-        .uri = "/",
-        .method = HTTP_GET,
-        .handler = index_handler,
-        .user_ctx = nullptr};
-
-    httpd_uri_t stream_uri = {
-        .uri = "/stream",
-        .method = HTTP_GET,
-        .handler = stream_handler,
-        .user_ctx = nullptr};
-
-    httpd_register_uri_handler(server, &index_uri);
-    httpd_register_uri_handler(server, &stream_uri);
-
-    Serial.println("Camera server started");
-    Serial.println("Open this URL in your browser:");
-    Serial.print("  http://");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("Error starting server!");
+    // Read frame from message buffer
+    // Increased buffer size to handle QVGA JPEG frames (can be up to ~30KB)
+    // Buffer is static to avoid stack overflow
+    size_t frame_size = xMessageBufferReceive(frame_buffer, (void *)frame_buffer_data, sizeof(frame_buffer_data), portMAX_DELAY);
+    
+    if (frame_size > 0) {
+      // Calculate number of fragments needed
+      uint16_t total_fragments = (frame_size + UDP_PACKET_DATA_SIZE - 1) / UDP_PACKET_DATA_SIZE;
+      frame_counter++;
+      
+      // Send frame in fragments
+      bool send_success = true;
+      for (uint16_t frag = 0; frag < total_fragments; frag++) {
+        size_t offset = frag * UDP_PACKET_DATA_SIZE;
+        size_t fragment_size = (offset + UDP_PACKET_DATA_SIZE <= frame_size) 
+                               ? UDP_PACKET_DATA_SIZE 
+                               : (frame_size - offset);
+        
+        // Create packet header
+        PacketHeader header;
+        header.frame_id = frame_counter;
+        header.fragment_id = frag;
+        header.total_fragments = total_fragments;
+        
+        // Send packet
+        udp.beginPacket(TARGET_IP, UDP_PORT);
+        udp.write((uint8_t*)&header, sizeof(header));
+        size_t written = udp.write(frame_buffer_data + offset, fragment_size);
+        
+        if (!udp.endPacket()) {
+          Serial.printf("UDP send failed for fragment %d/%d\n", frag + 1, total_fragments);
+          send_success = false;
+          break;
+        }
+        
+        // Small delay between fragments to avoid overwhelming the network
+        if (frag < total_fragments - 1) {
+          vTaskDelay(1 / portTICK_PERIOD_MS);
+        }
+      }
+      
+      if (send_success && total_fragments > 1) {
+        // Only log for fragmented frames to avoid spam
+        static uint32_t last_log_frame = 0;
+        if (frame_counter - last_log_frame >= 30) {
+          Serial.printf("Sent frame %lu (%d bytes, %d fragments)\n", frame_counter, frame_size, total_fragments);
+          last_log_frame = frame_counter;
+        }
+      }
+    }
+    
+    // Small delay to prevent WDT reset
+    vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
@@ -223,7 +255,43 @@ void setup() {
     Serial.println("WiFi connected");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
-    startCameraServer();
+    Serial.print("UDP target: ");
+    Serial.print(TARGET_IP);
+    Serial.print(":");
+    Serial.println(UDP_PORT);
+    
+    // Create message buffer for inter-task communication
+    // Increased size to handle QVGA JPEG frames (can be up to ~30KB)
+    frame_buffer = xMessageBufferCreate(35000);
+    if (frame_buffer == NULL) {
+      Serial.println("Failed to create frame buffer!");
+      while (true) {
+        delay(1000);
+      }
+    }
+    
+    // Create camera capture task
+    xTaskCreate(
+      cam_task,
+      "cam_task",
+      8192,
+      NULL,
+      configMAX_PRIORITIES,
+      NULL
+    );
+    
+    // Create UDP client task
+    // Stack size: buffer is now static (outside stack), so 8KB is sufficient
+    xTaskCreate(
+      udp_client_task,
+      "udp_client",
+      8192,  // Sufficient now that 35KB buffer is static (not on stack)
+      NULL,
+      configMAX_PRIORITIES,
+      NULL
+    );
+    
+    Serial.println("UDP streaming tasks started");
   } else {
     Serial.println("WiFi connection failed. Check SSID/PASSWORD.");
   }
