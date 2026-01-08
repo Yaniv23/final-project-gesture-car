@@ -1,15 +1,34 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include "esp_camera.h"
-#include "esp_http_server.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/message_buffer.h"
+#include "esp_log.h"
 
-// =================== USER SETTINGS ===================
-// Change these to match your WiFi network
 const char *WIFI_SSID     = "iPhone de Yaniv";
 const char *WIFI_PASSWORD = "12345678";
 
-// =================== CAMERA PINS (OV2640 on ESP32-S3) ===================
-// These pins are taken from your existing S3 camera config (camerapins.h)
+const char* TARGET_IP = "172.20.10.7";
+const int UDP_PORT = 5000;
+
+const size_t UDP_PACKET_MAX_SIZE = 1400;
+const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;
+
+// LED interne de l'ESP32-CAM S3 (LED_BUILTIN ou GPIO 33 pour LED rouge intégrée)
+#ifndef LED_BUILTIN
+  #define LED_BUILTIN 33  // LED rouge intégrée sur ESP32-CAM (active LOW)
+#endif
+#define LED_PIN LED_BUILTIN
+#define LED_BLINK_DURATION_MS 200  // Durée d'un clignotement (allumé/éteint)
+#define LED_BLINK_COUNT 3          // Nombre de clignotements pour connexion réussie
+
+struct PacketHeader {
+  uint32_t frame_id;
+  uint16_t fragment_id;
+  uint16_t total_fragments;
+};
 #define PWDN_GPIO_NUM    -1
 #define RESET_GPIO_NUM   -1
 #define XCLK_GPIO_NUM    15
@@ -29,108 +48,209 @@ const char *WIFI_PASSWORD = "12345678";
 #define HREF_GPIO_NUM    7
 #define PCLK_GPIO_NUM    13
 
-// =================== SIMPLE MJPEG STREAM HANDLER ===================
+MessageBufferHandle_t frame_buffer;
 
-static const char *STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=frame";
-static const char *STREAM_BOUNDARY     = "\r\n--frame\r\n";
-static const char *STREAM_PART         = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+// Statistics
+static uint32_t frames_dropped = 0;
+static uint32_t packets_sent = 0;
+static uint32_t packets_failed = 0;
 
-// Called by the HTTP server when a client requests /stream
-static esp_err_t stream_handler(httpd_req_t *req) {
-  camera_fb_t *fb = nullptr;
-  esp_err_t res;
-
-  // Tell the browser this is an MJPEG stream
-  res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) {
-    return res;
+// Fonction pour faire clignoter la LED interne 3 fois (indication connexion WiFi réussie)
+// Note: Sur ESP32-CAM, la LED rouge est active LOW (LOW = allumé, HIGH = éteint)
+void blinkWiFiConnectedLED() {
+  for (int i = 0; i < LED_BLINK_COUNT; i++) {
+    digitalWrite(LED_PIN, LOW);   // Allumer la LED (active LOW)
+    delay(LED_BLINK_DURATION_MS);
+    digitalWrite(LED_PIN, HIGH);  // Éteindre la LED
+    delay(LED_BLINK_DURATION_MS);
   }
+}
 
-  // Endless loop: capture a frame, send it, repeat
+void cam_task(void *pvParameters) {
   while (true) {
-    fb = esp_camera_fb_get();
+    camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
-      Serial.println("Camera capture failed");
-      return ESP_FAIL;
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
     }
 
-    // Send boundary between frames
-    res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    if (res != ESP_OK) {
+    if (fb->len > 35000) {
       esp_camera_fb_return(fb);
-      break;
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
     }
-
-    // Send JPEG headers (size of the image)
-    char header[64];
-    int hlen = snprintf(header, sizeof(header), STREAM_PART, fb->len);
-    res = httpd_resp_send_chunk(req, header, hlen);
-    if (res != ESP_OK) {
+    
+    // Flow control: Check if buffer has space, drop frame if full (non-blocking)
+    size_t space_available = xMessageBufferSpacesAvailable(frame_buffer);
+    if (space_available < fb->len) {
+      // Buffer is full, drop this frame to prevent blocking
+      frames_dropped++;
       esp_camera_fb_return(fb);
-      break;
+      vTaskDelay(5 / portTICK_PERIOD_MS);
+      continue;
     }
-
-    // Send the image bytes
-    res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+    
+    BaseType_t result = xMessageBufferSend(frame_buffer, (void *)fb->buf, fb->len, 0);
+    if (result != pdTRUE) {
+      frames_dropped++;
+    }
     esp_camera_fb_return(fb);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+  }
+}
 
-    if (res != ESP_OK) {
-      break;
+static uint8_t frame_buffer_data[35000];
+static uint32_t frame_counter = 0;
+static uint32_t last_wifi_check = 0;
+static const uint32_t WIFI_CHECK_INTERVAL_MS = 5000; // Check WiFi every 5 seconds
+
+// Function to check and reconnect WiFi if needed
+bool ensureWiFiConnected() {
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    return true;
+  }
+  
+  // Try to reconnect
+  if (status == WL_DISCONNECTED || status == WL_CONNECTION_LOST) {
+    Serial.printf("[WiFi] Connection lost, attempting reconnect...\n");
+    WiFi.disconnect();
+    delay(100);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      delay(250);
+      attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
+      blinkWiFiConnectedLED();  // Clignoter la LED pour indiquer la reconnexion
+      return true;
+    } else {
+      Serial.printf("[WiFi] Reconnection failed\n");
+      return false;
     }
   }
-
-  return res;
+  
+  return false;
 }
 
-// Simple index page: shows the video using an <img> tag
-static esp_err_t index_handler(httpd_req_t *req) {
-  const char html[] =
-      "<!DOCTYPE html>"
-      "<html>"
-      "<head><meta charset='UTF-8'><title>ESP32-S3 Camera</title></head>"
-      "<body style='margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh;'>"
-      "<img src='/stream' style='width:90vw; height:auto; max-height:90vh; object-fit:contain;' />"
-      "</body>"
-      "</html>";
-
-  httpd_resp_set_type(req, "text/html");
-  return httpd_resp_send(req, html, strlen(html));
+// Function to send UDP packet with retry logic
+bool sendUdpPacket(WiFiUDP& udp, const uint8_t* data, size_t len, uint32_t frame_id, uint16_t frag_id) {
+  const int MAX_RETRIES = 3;
+  int retry_count = 0;
+  
+  while (retry_count < MAX_RETRIES) {
+    // Check WiFi before each attempt
+    if (!ensureWiFiConnected()) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      retry_count++;
+      continue;
+    }
+    
+    // Try to begin packet
+    if (!udp.beginPacket(TARGET_IP, UDP_PORT)) {
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS); // Exponential backoff
+      continue;
+    }
+    
+    // Write data
+    size_t written = udp.write(data, len);
+    if (written != len) {
+      udp.stop();
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
+      continue;
+    }
+    
+    // End packet and check result
+    if (!udp.endPacket()) {
+      packets_failed++;
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
+      continue;
+    }
+    
+    // Success
+    packets_sent++;
+    return true;
+  }
+  
+  // All retries failed
+  packets_failed++;
+  return false;
 }
 
-// Start a very small HTTP server with 2 endpoints:
-//   /      -> simple HTML page with <img>
-//   /stream -> MJPEG video stream
-void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 80;
+void udp_client_task(void *pvParameters) {
+  WiFiUDP udp;
+  
+  while (true) {
+    // Periodic WiFi status check
+    uint32_t now = millis();
+    if (now - last_wifi_check > WIFI_CHECK_INTERVAL_MS) {
+      ensureWiFiConnected();
+      last_wifi_check = now;
+    }
+    
+    if (WiFi.status() != WL_CONNECTED) {
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      continue;
+    }
 
-  httpd_handle_t server = nullptr;
-  if (httpd_start(&server, &config) == ESP_OK) {
-    httpd_uri_t index_uri = {
-        .uri = "/",
-        .method = HTTP_GET,
-        .handler = index_handler,
-        .user_ctx = nullptr};
-
-    httpd_uri_t stream_uri = {
-        .uri = "/stream",
-        .method = HTTP_GET,
-        .handler = stream_handler,
-        .user_ctx = nullptr};
-
-    httpd_register_uri_handler(server, &index_uri);
-    httpd_register_uri_handler(server, &stream_uri);
-
-    Serial.println("Camera server started");
-    Serial.println("Open this URL in your browser:");
-    Serial.print("  http://");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("Error starting server!");
+    size_t frame_size = xMessageBufferReceive(frame_buffer, (void *)frame_buffer_data, sizeof(frame_buffer_data), portMAX_DELAY);
+    
+    if (frame_size > 0) {
+      uint16_t total_fragments = (frame_size + UDP_PACKET_DATA_SIZE - 1) / UDP_PACKET_DATA_SIZE;
+      frame_counter++;
+      
+      // Calculate dynamic delay based on fragment size and total fragments
+      // Larger packets and more fragments need more time between sends
+      uint32_t base_delay_ms = 2; // Base delay of 2ms
+      uint32_t fragment_delay = base_delay_ms + (total_fragments / 10); // Add delay for many fragments
+      
+      for (uint16_t frag = 0; frag < total_fragments; frag++) {
+        size_t offset = frag * UDP_PACKET_DATA_SIZE;
+        size_t fragment_size = (offset + UDP_PACKET_DATA_SIZE <= frame_size) 
+                               ? UDP_PACKET_DATA_SIZE 
+                               : (frame_size - offset);
+        
+        PacketHeader header;
+        header.frame_id = frame_counter;
+        header.fragment_id = frag;
+        header.total_fragments = total_fragments;
+        
+        // Prepare packet data
+        uint8_t packet_data[sizeof(header) + fragment_size];
+        memcpy(packet_data, &header, sizeof(header));
+        memcpy(packet_data + sizeof(header), frame_buffer_data + offset, fragment_size);
+        
+        // Send with retry logic
+        bool success = sendUdpPacket(udp, packet_data, sizeof(packet_data), frame_counter, frag);
+        
+        if (!success && frag == 0) {
+          // If first fragment fails, skip entire frame to avoid partial frames
+          break;
+        }
+        
+        // Dynamic delay between fragments (except last one)
+        if (frag < total_fragments - 1) {
+          vTaskDelay(fragment_delay / portTICK_PERIOD_MS);
+        }
+      }
+      
+      // Periodic statistics (every 100 frames)
+      if (frame_counter % 100 == 0) {
+        Serial.printf("[Stats] Frames: %lu, Dropped: %lu, Packets Sent: %lu, Failed: %lu\n",
+                      frame_counter, frames_dropped, packets_sent, packets_failed);
+      }
+    }
+    
+    vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
-
-// =================== CAMERA INITIALIZATION ===================
 
 bool initCamera() {
   camera_config_t config;
@@ -155,10 +275,8 @@ bool initCamera() {
 
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-
-  // Smaller frame and medium quality = smoother streaming
-  config.frame_size = FRAMESIZE_QVGA;  // 320x240
-  config.jpeg_quality = 15;            // 0 = best, 63 = worst
+  config.frame_size = FRAMESIZE_QVGA;
+  config.jpeg_quality = 15;
   config.fb_count = 2;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
@@ -169,29 +287,25 @@ bool initCamera() {
     return false;
   }
 
-  // Configure camera orientation
-  // Adjust these based on your camera mounting:
-  // - set_hmirror(true) = flip left-right (mirror effect)
-  // - set_vflip(true) = flip upside-down
   sensor_t *s = esp_camera_sensor_get();
   if (s != nullptr) {
-    s->set_hmirror(s, true);   // Horizontal mirror (left-right flip)
-    s->set_vflip(s, true);     // Vertical flip (upside-down flip)
-    Serial.println("Camera orientation: horizontal mirror + vertical flip enabled");
+    s->set_hmirror(s, true);
+    s->set_vflip(s, true);
   }
 
-  Serial.println("Camera init OK");
   return true;
 }
-
-// =================== SETUP & LOOP ===================
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
-
-  Serial.println();
-  Serial.println("=== Simple ESP32-S3 OV2640 Camera ===");
+  
+  // Initialiser la LED interne en sortie
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);  // LED éteinte au démarrage (active LOW)
+  
+  esp_log_level_set("wifi", ESP_LOG_ERROR);
+  esp_log_level_set("WiFiUdp", ESP_LOG_ERROR);
 
   if (!psramFound()) {
     Serial.println("No PSRAM found! Camera needs PSRAM on ESP32-S3.");
@@ -207,31 +321,49 @@ void setup() {
     }
   }
 
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
-    Serial.print(".");
     attempts++;
   }
 
-  Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi connected");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    startCameraServer();
+    Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+    blinkWiFiConnectedLED();  // Clignoter la LED 3 fois pour indiquer la connexion réussie
+    
+    frame_buffer = xMessageBufferCreate(35000);
+    if (frame_buffer == NULL) {
+      Serial.println("Failed to create frame buffer!");
+      while (true) {
+        delay(1000);
+      }
+    }
+    
+    xTaskCreate(
+      cam_task,
+      "cam_task",
+      8192,
+      NULL,
+      configMAX_PRIORITIES,
+      NULL
+    );
+    
+    xTaskCreate(
+      udp_client_task,
+      "udp_client",
+      8192,
+      NULL,
+      configMAX_PRIORITIES,
+      NULL
+    );
   } else {
     Serial.println("WiFi connection failed. Check SSID/PASSWORD.");
   }
 }
 
 void loop() {
-  // Nothing to do here.
-  // The camera server runs in the background (in its own task).
   delay(1000);
 }
 
