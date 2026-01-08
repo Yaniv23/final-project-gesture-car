@@ -16,6 +16,14 @@ const int UDP_PORT = 5000;
 const size_t UDP_PACKET_MAX_SIZE = 1400;
 const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;
 
+// LED interne de l'ESP32-CAM S3 (LED_BUILTIN ou GPIO 33 pour LED rouge intégrée)
+#ifndef LED_BUILTIN
+  #define LED_BUILTIN 33  // LED rouge intégrée sur ESP32-CAM (active LOW)
+#endif
+#define LED_PIN LED_BUILTIN
+#define LED_BLINK_DURATION_MS 200  // Durée d'un clignotement (allumé/éteint)
+#define LED_BLINK_COUNT 3          // Nombre de clignotements pour connexion réussie
+
 struct PacketHeader {
   uint32_t frame_id;
   uint16_t fragment_id;
@@ -46,6 +54,17 @@ MessageBufferHandle_t frame_buffer;
 static uint32_t frames_dropped = 0;
 static uint32_t packets_sent = 0;
 static uint32_t packets_failed = 0;
+
+// Fonction pour faire clignoter la LED interne 3 fois (indication connexion WiFi réussie)
+// Note: Sur ESP32-CAM, la LED rouge est active LOW (LOW = allumé, HIGH = éteint)
+void blinkWiFiConnectedLED() {
+  for (int i = 0; i < LED_BLINK_COUNT; i++) {
+    digitalWrite(LED_PIN, LOW);   // Allumer la LED (active LOW)
+    delay(LED_BLINK_DURATION_MS);
+    digitalWrite(LED_PIN, HIGH);  // Éteindre la LED
+    delay(LED_BLINK_DURATION_MS);
+  }
+}
 
 void cam_task(void *pvParameters) {
   while (true) {
@@ -107,6 +126,7 @@ bool ensureWiFiConnected() {
     
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
+      blinkWiFiConnectedLED();  // Clignoter la LED pour indiquer la reconnexion
       return true;
     } else {
       Serial.printf("[WiFi] Reconnection failed\n");
@@ -280,6 +300,10 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
   
+  // Initialiser la LED interne en sortie
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);  // LED éteinte au démarrage (active LOW)
+  
   esp_log_level_set("wifi", ESP_LOG_ERROR);
   esp_log_level_set("WiFiUdp", ESP_LOG_ERROR);
 
@@ -306,6 +330,9 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+    blinkWiFiConnectedLED();  // Clignoter la LED 3 fois pour indiquer la connexion réussie
+    
     frame_buffer = xMessageBufferCreate(35000);
     if (frame_buffer == NULL) {
       Serial.println("Failed to create frame buffer!");

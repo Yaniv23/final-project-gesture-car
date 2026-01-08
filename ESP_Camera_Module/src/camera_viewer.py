@@ -11,9 +11,11 @@ from datetime import datetime, timedelta
 # === CONFIGURATION ===
 # UDP port to listen on (must match ESP32 configuration)
 UDP_PORT = 5000
+DISCOVERY_PORT = 5001  # Port pour la découverte
 PACKET_HEADER_SIZE = 8
-FRAME_TIMEOUT_SECONDS = 2.0  # Discard incomplete frames after 2 seconds
+FRAME_TIMEOUT_SECONDS = 5.0  # Discard incomplete frames after 5 seconds (increased for unstable connections)
 STATS_INTERVAL_SECONDS = 5.0  # Print statistics every 5 seconds
+DISCOVERY_TIMEOUT = 5.0  # Timeout pour la découverte en secondes
 
 
 def parse_args():
@@ -31,7 +33,79 @@ def parse_args():
         action="store_true",
         help="Enable verbose debugging output",
     )
+    parser.add_argument(
+        "--no-discovery",
+        action="store_true",
+        help="Skip automatic ESP32 discovery (use broadcast mode)",
+    )
     return parser.parse_args()
+
+
+def discover_esp32(timeout=DISCOVERY_TIMEOUT, verbose=False):
+    """
+    Découvre l'ESP32 en envoyant un message de découverte en broadcast.
+    Retourne l'IP de l'ESP32 si trouvée, None sinon.
+    """
+    try:
+        # Créer un socket pour la découverte
+        discovery_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        discovery_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        discovery_sock.settimeout(timeout)
+        
+        # Envoyer le message de découverte en broadcast
+        message = "DISCOVER_CAMERA_VIEWER"
+        broadcast_addr = ("255.255.255.255", DISCOVERY_PORT)
+        
+        if verbose:
+            print(f"[Discovery] Sending discovery message to {broadcast_addr[0]}:{broadcast_addr[1]}")
+        
+        discovery_sock.sendto(message.encode(), broadcast_addr)
+        
+        # Attendre la réponse
+        try:
+            data, addr = discovery_sock.recvfrom(1024)
+            response = data.decode('utf-8', errors='ignore')
+            
+            if response.startswith("CAMERA_IP:"):
+                esp32_ip = response.split(":", 1)[1].strip()
+                if verbose:
+                    print(f"[Discovery] ESP32 found! IP: {esp32_ip} (from {addr[0]})")
+                
+                # Envoyer notre IP à l'ESP32 pour qu'il l'apprenne
+                try:
+                    # Obtenir notre IP locale
+                    # Créer une connexion temporaire pour obtenir l'IP locale
+                    temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    temp_sock.connect(("8.8.8.8", 80))
+                    local_ip = temp_sock.getsockname()[0]
+                    temp_sock.close()
+                    
+                    # Envoyer notre IP à l'ESP32
+                    viewer_ip_msg = f"VIEWER_IP:{local_ip}"
+                    discovery_sock.sendto(viewer_ip_msg.encode(), (esp32_ip, DISCOVERY_PORT))
+                    
+                    if verbose:
+                        print(f"[Discovery] Sent our IP ({local_ip}) to ESP32")
+                except Exception as e:
+                    if verbose:
+                        print(f"[Discovery] Could not send our IP to ESP32: {e}")
+                
+                discovery_sock.close()
+                return esp32_ip
+            else:
+                if verbose:
+                    print(f"[Discovery] Received unexpected response: {response}")
+        except socket.timeout:
+            if verbose:
+                print(f"[Discovery] Timeout waiting for ESP32 response")
+        
+        discovery_sock.close()
+        return None
+        
+    except Exception as e:
+        if verbose:
+            print(f"[Discovery] Error during discovery: {e}")
+        return None
 
 
 def is_valid_jpeg(data):
@@ -59,11 +133,27 @@ def main():
     port = args.port
     verbose = args.verbose
 
+    # Découvrir l'ESP32 si demandé
+    esp32_ip = None
+    if not args.no_discovery:
+        print("[Discovery] Attempting to discover ESP32 camera...")
+        esp32_ip = discover_esp32(timeout=DISCOVERY_TIMEOUT, verbose=verbose)
+        if esp32_ip:
+            print(f"[Discovery] Successfully discovered ESP32 at {esp32_ip}")
+            print("[Discovery] ESP32 will now send stream to this PC")
+        else:
+            print("[Discovery] ESP32 not found, will listen for broadcast stream")
+            print("[Discovery] Make sure ESP32 is connected to the same WiFi network")
+    else:
+        print("[Discovery] Discovery skipped (--no-discovery flag)")
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Increase socket buffer size to handle bursts
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536 * 2)  # 128KB buffer
     sock.bind(("0.0.0.0", port))
     sock.settimeout(0.1)
 
-    print(f"Listening for UDP packets on port {port}")
+    print(f"\n[Listening] UDP packets on port {port}")
     print("Waiting for ESP32 camera stream...")
 
     window_name = "ESP32 Car Camera"
@@ -106,10 +196,11 @@ def main():
                 complete_frame = b''.join(frame_parts)
                 actual_frame_size = len(complete_frame)
                 
-                # Cleanup old incomplete frames
-                if frame_id > last_complete_frame_id + 5:
-                    frames_to_remove = [fid for fid in fragment_buffers.keys() if fid < frame_id - 5]
+                # Cleanup old incomplete frames (more aggressive cleanup)
+                if frame_id > last_complete_frame_id + 3:
+                    frames_to_remove = [fid for fid in fragment_buffers.keys() if fid < frame_id - 3]
                     for fid in frames_to_remove:
+                        frames_timeout += 1  # Count as timeout
                         del fragment_buffers[fid]
                         if fid in frame_timestamps:
                             del frame_timestamps[fid]
