@@ -69,8 +69,8 @@ if not exist "%HAND_TRACKING_DIR%" (
     exit /b 1
 )
 
-cd /d "%HAND_TRACKING_DIR%"
-echo [OK] Changed to directory: %HAND_TRACKING_DIR%
+cd /d "%PROJECT_ROOT%"
+echo [OK] Changed to directory: %PROJECT_ROOT%
 echo.
 
 REM Check if virtual environment exists
@@ -123,8 +123,9 @@ echo.
 
 REM Install dependencies
 echo Installing Python dependencies...
-if exist "requirements.txt" (
-    pip install -r requirements.txt
+set "REQUIREMENTS_FILE=%PROJECT_ROOT%\requirements.txt"
+if exist "%REQUIREMENTS_FILE%" (
+    pip install -r "%REQUIREMENTS_FILE%"
     if errorlevel 1 (
         echo [ERROR] Failed to install dependencies!
         pause
@@ -132,7 +133,8 @@ if exist "requirements.txt" (
     )
     echo [OK] All Python dependencies installed successfully
 ) else (
-    echo [ERROR] requirements.txt not found!
+    echo [ERROR] requirements.txt not found in project root!
+    echo Expected location: %REQUIREMENTS_FILE%
     pause
     exit /b 1
 )

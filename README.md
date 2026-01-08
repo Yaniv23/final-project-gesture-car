@@ -110,12 +110,12 @@ See component-specific documentation for detailed pin assignments:
 ### Python Packages
 Install Python dependencies for hand tracking:
 ```bash
-cd Hand_Tracking
 pip install -r requirements.txt
 ```
 
 Required packages:
 - `opencv-python>=4.5.0` - Computer vision
+- `numpy>=1.19.0` - Numerical computing (used by camera viewer)
 - `mediapipe==0.10.9` - Hand tracking
 - `pyserial>=3.5` - Serial communication
 
@@ -138,10 +138,9 @@ The ESP32 sender code can be uploaded using Arduino IDE if preferred.
 
 **Python packages:**
 ```bash
-cd Hand_Tracking
-python -m venv venv  # Optional: create virtual environment
+python -m venv venv  # Optional: create virtual environment (can be in Hand_Tracking/ or project root)
 source venv/bin/activate  # Linux/Mac, or `venv\Scripts\activate` on Windows
-pip install -r requirements.txt
+pip install -r requirements.txt  # Install from project root
 ```
 
 **PlatformIO:**
@@ -359,10 +358,10 @@ For detailed information on each component:
 ```
 final-project-gesture-car/
 ├── README.md                    # This file
+├── requirements.txt            # Python dependencies (project root)
 ├── Hand_Tracking/              # PC-side hand gesture recognition
 │   ├── Hand_Tracker.py         # Main tracking script
-│   ├── constant.py             # Serial port configuration
-│   └── requirements.txt        # Python dependencies
+│   └── constant.py             # Serial port configuration
 ├── Vehicule/                   # ESP32 vehicle controller
 │   ├── src/                    # Source code
 │   ├── platformio.ini         # Build configuration
