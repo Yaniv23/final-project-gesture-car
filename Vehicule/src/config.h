@@ -7,20 +7,20 @@
 // NOTE: ESP32 GPIO 34, 35, 36, 39 are INPUT-ONLY and cannot be used for PWM output
 // Using valid PWM-capable pins (2-33, except 24, 28-31)
 
-// Front Right Motor (Driver #2, Channel C)
-#define FRONT_RIGHT_EN     27  // PWM pin for Front Right motor (PWMC on Driver #2)
-#define FRONT_RIGHT_IN1    25  // Front Right direction pin 1 (CIN1 on Driver #2)
-#define FRONT_RIGHT_IN2    26  // Front Right direction pin 2 (CIN2 on Driver #2)
+// Front Right Motor (Driver #2, Channel A)
+#define FRONT_RIGHT_EN     27  // PWM pin for Front Right motor (PWMA on Driver #2)
+#define FRONT_RIGHT_IN1    25  // Front Right direction pin 1 (AIN1 on Driver #2)
+#define FRONT_RIGHT_IN2    26  // Front Right direction pin 2 (AIN2 on Driver #2)
+
+// Front Left Motor (Driver #2, Channel B)
+#define FRONT_LEFT_EN      14  // PWM pin for Front Left motor (PWMB on Driver #1)
+#define FRONT_LEFT_IN1     32  // Front Left direction pin 1 (BIN1 on Driver #1)
+#define FRONT_LEFT_IN2     33  // Front Left direction pin 2 (BIN2 on Driver #1)
 
 // Back Right Motor (Driver #1, Channel A)
 #define BACK_RIGHT_EN      19  // PWM pin for Back Right motor (PWMA on Driver #1)
 #define BACK_RIGHT_IN1     5   // Back Right direction pin 1 (AIN1 on Driver #1)
 #define BACK_RIGHT_IN2     18  // Back Right direction pin 2 (AIN2 on Driver #1)
-
-// Front Left Motor (Driver #2, Channel D)
-#define FRONT_LEFT_EN      14  // PWM pin for Front Left motor (PWMD on Driver #2)
-#define FRONT_LEFT_IN1     32  // Front Left direction pin 1 (DIN1 on Driver #2)
-#define FRONT_LEFT_IN2     33  // Front Left direction pin 2 (DIN2 on Driver #2)
 
 // Back Left Motor (Driver #1, Channel B)
 #define BACK_LEFT_EN       23  // PWM pin for Back Left motor (PWMB on Driver #1)
