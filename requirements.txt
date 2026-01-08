@@ -3,6 +3,7 @@
 
 # Computer Vision
 opencv-python>=4.5.0
+numpy>=1.19.0
 
 # Hand Tracking
 mediapipe==0.10.9  # Version 0.10.9 supports solutions API, newer versions (0.10.10+) removed it

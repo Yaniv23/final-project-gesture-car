@@ -26,12 +26,13 @@ The hand tracking system uses **Google MediaPipe** to detect hand landmarks in r
 
 **Option 1: Using pip (system-wide)**
 ```bash
-cd Hand_Tracking
+# From project root
 pip install -r requirements.txt
 ```
 
 **Option 2: Using virtual environment (recommended)**
 ```bash
+# From project root or Hand_Tracking directory
 cd Hand_Tracking
 python -m venv venv
 
@@ -41,13 +42,15 @@ source venv/bin/activate
 # Windows:
 venv\Scripts\activate
 
-# Install dependencies
+# Install dependencies (from project root)
+cd ..  # Go to project root if in Hand_Tracking
 pip install -r requirements.txt
 ```
 
 ### Required Packages
 
 - `opencv-python>=4.5.0` - Computer vision and video capture
+- `numpy>=1.19.0` - Numerical computing (used by camera viewer)
 - `mediapipe==0.10.9` - Hand tracking (specific version for compatibility)
 - `pyserial>=3.5` - Serial communication with ESP32
 
@@ -235,8 +238,9 @@ Hand_Tracking/
 ├── Hand_Tracker.py      # Main tracking script
 ├── constant.py          # Serial port configuration
 ├── serial_monitor.py    # Debugging tool (optional)
-├── requirements.txt    # Python dependencies
 └── README.md           # This file
+
+Note: requirements.txt is located in the project root directory.
 ```
 
 ### Key Functions

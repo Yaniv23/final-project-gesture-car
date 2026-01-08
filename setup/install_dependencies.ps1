@@ -122,7 +122,7 @@ if (-not (Test-Path $handTrackingDir)) {
     exit 1
 }
 
-Set-Location $handTrackingDir
+Set-Location $projectRoot
 
 $venvPath = Join-Path $handTrackingDir "venv"
 if (Test-Path $venvPath) {
@@ -167,14 +167,14 @@ Write-Host "[OK] pip upgraded" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
-$requirementsFile = Join-Path $handTrackingDir "requirements.txt"
+$requirementsFile = Join-Path $projectRoot "requirements.txt"
 if (Test-Path $requirementsFile) {
     $venvPip = Join-Path $venvPath "Scripts\pip.exe"
     if (Test-Path $venvPip) {
-        & $venvPip install -r requirements.txt
+        & $venvPip install -r $requirementsFile
     }
     else {
-        Invoke-Expression "$pythonCmd -m pip install -r requirements.txt"
+        Invoke-Expression "$pythonCmd -m pip install -r $requirementsFile"
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to install dependencies!" -ForegroundColor Red
@@ -183,7 +183,8 @@ if (Test-Path $requirementsFile) {
     Write-Host "[OK] All Python dependencies installed successfully" -ForegroundColor Green
 }
 else {
-    Write-Host "[ERROR] requirements.txt not found!" -ForegroundColor Red
+    Write-Host "[ERROR] requirements.txt not found in project root!" -ForegroundColor Red
+    Write-Host "Expected location: $requirementsFile" -ForegroundColor Yellow
     exit 1
 }
 
