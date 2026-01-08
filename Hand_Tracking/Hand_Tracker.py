@@ -27,7 +27,6 @@ COMMAND_MAP = {
     "DIAGONAL_135": 0x0A,
     "PIVOT_LEFT": 0x0B,
     "PIVOT_RIGHT": 0x0C,
-    "CENTER": 0x00,
 }
 
 def find_available_ports():
@@ -103,7 +102,7 @@ def get_direction_label(angle_deg):
     elif -67.5 < angle_deg <= -22.5:
         return "DIAGONAL_315"
     else:
-        return "CENTER"
+        return "STOP"
 
 def is_hand_closed(landmarks):
     fingers = {
@@ -238,8 +237,6 @@ def main():
                     detected_label = "ROTATE_CW"
                 elif raised_fingers == 2:
                     detected_label = "ROTATE_CCW"
-                elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-                    detected_label = "CENTER"
                 else:
                     detected_label = get_direction_label(angle_deg)
 
@@ -298,7 +295,6 @@ def main():
             "BACKWARD": (255, 255, 0),
             "ROTATE_CW": (255, 0, 255),
             "ROTATE_CCW": (0, 255, 255),
-            "CENTER": (100, 100, 255),
             "SIDEWAY_LEFT": (255, 165, 0),
             "SIDEWAY_RIGHT": (255, 165, 0),
             "DIAGONAL_45": (0, 255, 255),
