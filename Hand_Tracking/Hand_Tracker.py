@@ -103,7 +103,7 @@ def get_direction_label(angle_deg):
     elif -67.5 < angle_deg <= -22.5:
         return "DIAGONAL_315"
     else:
-        return "CENTER"
+        return "STOP"
 
 def is_hand_closed(landmarks):
     fingers = {
@@ -140,18 +140,6 @@ def count_raised_fingers(landmarks):
             raised_count += 1
     return raised_count
 
-# Old circle detection functions - no longer used
-# def is_circle_ccw(landmarks, w, h):
-#     x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
-#     x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
-#     distance = math.hypot(x2 - x1, y2 - y1)
-#     return distance < 40 and x2 > x1
-#
-# def is_circle_cw(landmarks, w, h):
-#     x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
-#     x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
-#     distance = math.hypot(x2 - x1, y2 - y1)
-#     return distance < 40 and x2 < x1
 
 def main():
     """Main function for hand tracking - can be called from other modules"""
@@ -238,22 +226,11 @@ def main():
                     detected_label = "ROTATE_CW"
                 elif raised_fingers == 2:
                     detected_label = "ROTATE_CCW"
-                elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-                    detected_label = "CENTER"
                 else:
                     detected_label = get_direction_label(angle_deg)
 
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
             cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
-            cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
-        else:
-            detected_label = "STOP"
-
-        if detected_label == last_detected:
-            stable_counter += 1
-        else:
-            stable_counter = 0
-            last_detected = detected_label
 
         if stable_counter >= stable_threshold:
             if current_display != detected_label:
