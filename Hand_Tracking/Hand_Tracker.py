@@ -6,32 +6,28 @@ import serial.tools.list_ports
 import time
 from constant import COM_PORT, BAUD_RATE
 
-# === SETUP ===
 mp_hands = mp.solutions.hands
-hands = None  # Will be initialized in main()
+hands = None
 mp_draw = mp.solutions.drawing_utils
 
-cap = None  # Will be initialized in main()
-
-# Serial to ESP32 - Try to connect, but make it optional
+cap = None
 ser = None
 
-# === Command Mapping (matches Vehicule/src/communication/command_protocol.h) ===
 COMMAND_MAP = {
-    "Stop": 0x00,                    # CMD_STOP
-    "Forward": 0x01,                 # CMD_FORWARD
-    "Backward": 0x02,                # CMD_BACKWARD
-    "Sideway_Left": 0x03,            # CMD_STRAFE_LEFT
-    "Sideway_Right": 0x04,           # CMD_STRAFE_RIGHT
-    "rotate_cw": 0x05,               # CMD_ROTATE_CW
-    "rotate_ccw": 0x06,              # CMD_ROTATE_CCW
-    "diagonal_forward_left": 0x07,   # CMD_DIAGONAL_FORWARD_LEFT
-    "diagonal_forward_right": 0x08,  # CMD_DIAGONAL_FORWARD_RIGHT
-    "diagonal_backward_left": 0x09,  # CMD_DIAGONAL_BACKWARD_LEFT
-    "diagonal_backward_right": 0x0A, # CMD_DIAGONAL_BACKWARD_RIGHT
-    "pivot_left": 0x0B,              # CMD_PIVOT_LEFT
-    "pivot_right": 0x0C,             # CMD_PIVOT_RIGHT
-    "Center": 0x00,                  # Treat center as STOP
+    "STOP": 0x00,
+    "FORWARD": 0x01,
+    "BACKWARD": 0x02,
+    "SIDEWAY_LEFT": 0x03,
+    "SIDEWAY_RIGHT": 0x04,
+    "ROTATE_CW": 0x05,
+    "ROTATE_CCW": 0x06,
+    "DIAGONAL_315": 0x07,
+    "DIAGONAL_45": 0x08,
+    "DIAGONAL_225": 0x09,
+    "DIAGONAL_135": 0x0A,
+    "PIVOT_LEFT": 0x0B,
+    "PIVOT_RIGHT": 0x0C,
+    "CENTER": 0x00,
 }
 
 def find_available_ports():
@@ -42,49 +38,72 @@ def find_available_ports():
         available.append(port.device)
     return available
 
-# Try to connect to serial port
-try:
-    ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
-    time.sleep(2)
-    print(f"[OK] Connected to {COM_PORT}")
-except serial.SerialException as e:
-    print(f"[WARNING] Could not connect to {COM_PORT}: {e}")
-    print("Available COM ports:")
+def connect_serial(port=None, baud=115200, retries=3):
+    """Connect to serial port with retry logic and error reporting"""
+    target_port = COM_PORT
+    
+    # First, list available ports
     available_ports = find_available_ports()
-    if available_ports:
-        for port in available_ports:
-            print(f"  - {port}")
-        print(f"\nTo use a different port, change COM_PORT in the script or connect your ESP32.")
-    else:
-        print("  No COM ports found.")
-    print("\n[INFO] Running in camera-only mode (no serial communication)")
-    print("       Hand tracking will still work, but commands won't be sent to ESP32.\n")
+    print(f"[Serial] Available ports: {available_ports}")
+    
+    if not available_ports:
+        print("[ERROR] No serial ports found! Is the ESP32 connected?")
+        return None
+    
+    # Check if target port is available
+    if target_port not in available_ports:
+        print(f"[WARNING] Port {target_port} not found in available ports!")
+        print(f"[INFO] Trying first available port: {available_ports[0]}")
+        target_port = available_ports[0]
+    
+    # Try to connect with retries
+    for attempt in range(retries):
+        try:
+            print(f"[Serial] Attempting to connect to {target_port} at {baud} baud (attempt {attempt + 1}/{retries})...")
+            connection = serial.Serial(target_port, baud, timeout=0.1)
+            time.sleep(2)  # Wait for connection to stabilize
+            if connection.is_open:
+                print(f"[SUCCESS] Connected to {target_port} at {baud} baud")
+                return connection
+        except serial.SerialException as e:
+            print(f"[ERROR] Serial connection failed (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(1)
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during serial connection: {e}")
+            if attempt < retries - 1:
+                time.sleep(1)
+    
+    print(f"[ERROR] Failed to connect to {target_port} after {retries} attempts")
+    return None
 
-# Stability filtering
+# Try to connect to serial port
+ser = connect_serial(COM_PORT, BAUD_RATE)
+
 last_detected = ""
-current_display = "Stop"  # Initialize to Stop so we can send immediately
+current_display = "STOP"
 stable_counter = 0
-stable_threshold = 10  # Frames needed to confirm a new label
+stable_threshold = 6
 
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
-        return "Sideway_Right"
+        return "SIDEWAY_RIGHT"
     elif 22.5 < angle_deg <= 67.5:
-        return "diagonal_forward_right"
+        return "DIAGONAL_45"
     elif 67.5 < angle_deg <= 112.5:
-        return "Forward"
+        return "FORWARD"
     elif 112.5 < angle_deg <= 157.5:
-        return "diagonal_forward_left"
+        return "DIAGONAL_135"
     elif 157.5 < angle_deg or angle_deg <= -157.5:
-        return "Sideway_Left"
+        return "SIDEWAY_LEFT"
     elif -157.5 < angle_deg <= -112.5:
-        return "diagonal_backward_left"
+        return "DIAGONAL_225"
     elif -112.5 < angle_deg <= -67.5:
-        return "Backward"
+        return "BACKWARD"
     elif -67.5 < angle_deg <= -22.5:
-        return "diagonal_backward_right"
+        return "DIAGONAL_315"
     else:
-        return "Center"
+        return "CENTER"
 
 def is_hand_closed(landmarks):
     fingers = {
@@ -99,17 +118,6 @@ def is_hand_closed(landmarks):
             bent_count += 1
     return bent_count == 4
 
-def is_index_finger_up(landmarks):
-    return (
-        landmarks[8].y < landmarks[6].y and
-        landmarks[12].y > landmarks[10].y and
-        landmarks[16].y > landmarks[14].y and
-        landmarks[20].y > landmarks[18].y
-    )
-
-def is_index_finger_down(landmarks):
-    return landmarks[8].y > landmarks[6].y
-
 def is_hand_open(landmarks):
     return (
         landmarks[8].y < landmarks[6].y and
@@ -118,55 +126,54 @@ def is_hand_open(landmarks):
         landmarks[20].y < landmarks[18].y
     )
 
-# === Circle Gestures ===
 def is_circle_ccw(landmarks, w, h):
-    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)  # Thumb tip
-    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)  # Index tip
+    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
+    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
     distance = math.hypot(x2 - x1, y2 - y1)
-    return distance < 40 and x2 > x1  # Index to the right → CW
+    return distance < 40 and x2 > x1
 
 def is_circle_cw(landmarks, w, h):
-    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)  # Thumb tip
-    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)  # Index tipq
+    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
+    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
     distance = math.hypot(x2 - x1, y2 - y1)
-    return distance < 40 and x2 < x1  # Index to the left → CCW
+    return distance < 40 and x2 < x1
 
 def main():
     """Main function for hand tracking - can be called from other modules"""
     global cap, ser, last_detected, current_display, stable_counter, hands
     
-    # Initialize MediaPipe if not already done
+    # Check serial connection status
+    if ser is None or not ser.is_open:
+        print("[WARNING] Serial connection not available. Attempting to reconnect...")
+        ser = connect_serial(COM_PORT, BAUD_RATE)
+        if ser is None or not ser.is_open:
+            print("[WARNING] Running without serial connection. Commands will be printed but not sent.")
+    
     if hands is None:
         hands = mp_hands.Hands()
     
-    # Initialize webcam if not already done
     if cap is None or not cap.isOpened():
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             print("[ERROR] Could not open webcam!")
             return
-        print("[Hand_Tracker] Webcam opened successfully")
     
     window_name = "Hand + Serial"
-    print(f"[Hand_Tracker] Starting main loop, window name: {window_name}")
     
-    # Create window explicitly before main loop
     try:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 640, 480)
-        print(f"[Hand_Tracker] Window '{window_name}' created and ready")
     except Exception as e:
         print(f"[Hand_Tracker] Error creating window: {e}")
         import traceback
         traceback.print_exc()
         return
     
-    # === MAIN LOOP ===
     frame_count = 0
     iteration_count = 0
-    last_send_time = 0  # Track when last command was sent
-    last_sent_command = None  # Track last sent command to avoid duplicate prints
-    send_interval = 0.2  # Send command every 1 second
+    last_send_time = 0
+    last_sent_command = None
+    send_interval = 0.2
     while True:
         iteration_count += 1
         ret, frame = cap.read()
@@ -177,7 +184,7 @@ def main():
                 break
             continue
         
-        frame_count = 0  # Reset counter on success
+        frame_count = 0
             
         frame = cv2.flip(frame, 1)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -187,11 +194,10 @@ def main():
         cx, cy = w // 2, h // 2
         center_threshold = 60
 
-       # Draw axes and center neutral zone
         cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 1)
-        cv2.line(frame, (0, cy), (w, cy), (200, 200, 200), 1)
-        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 1)        # Diagonal ↘️
-        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 1)        # Diagonal ↙️
+        cv2.line(frame, (0, cy), (w, cy), (180, 180, 180), 2)
+        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 2)
+        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 2)
         cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 1)
 
         detected_label = ""
@@ -209,98 +215,89 @@ def main():
             angle_deg = math.degrees(math.atan2(dy, dx))
             distance_to_center = math.hypot(dx, dy)
 
-            # === GESTURE DECISION TREE ===
-            
-            
-            if is_index_finger_up(landmarks):
-                detected_label = "Forward"
-            elif is_hand_closed(landmarks):
-                detected_label = "Stop"
+            if is_hand_closed(landmarks):
+                detected_label = "STOP"
             elif is_circle_ccw(landmarks, w, h):
-                detected_label = "rotate_ccw"
+                detected_label = "ROTATE_CCW"
             elif is_circle_cw(landmarks, w, h):
-                detected_label = "rotate_cw"    
-            elif is_index_finger_down(landmarks):
-                detected_label = "Backward"
+                detected_label = "ROTATE_CW"    
             elif is_hand_open(landmarks) and distance_to_center < center_threshold:
-                detected_label = "Center"
+                detected_label = "CENTER"
             else:
                 detected_label = get_direction_label(angle_deg)
 
-            # Draw hand
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
             cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
             cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
         else:
-            # No hand detected - send Stop command
-            detected_label = "Stop"
+            detected_label = "STOP"
 
-        # Stability filter (applies to both hand detected and no hand detected)
         if detected_label == last_detected:
             stable_counter += 1
         else:
             stable_counter = 0
             last_detected = detected_label
 
-        # Update current_display when stable
         if stable_counter >= stable_threshold:
             if current_display != detected_label:
                 current_display = detected_label
 
-        # Send command every 1 second (if we have a stable command)
         current_time = time.time()
         if current_display and (current_time - last_send_time) >= send_interval:
-            if ser and ser.is_open:
-                try:
-                    # Look up binary command byte; default to STOP (0x00) if unknown
-                    cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["Stop"])
-                    # Send as text string (decimal) with newline - ESP32 expects "7\n" or "0x07\n"
-                    # Format: "<cmd>\n" where cmd can be decimal or hex
-                    cmd_str = f"{cmd_byte}\n"
-                    ser.write(cmd_str.encode('utf-8'))
-                    # Only print if command changed
-                    if last_sent_command != current_display:
-                        print(f"Sent to ESP32: {current_display} -> 0x{cmd_byte:02X} ({cmd_byte})")
+            if last_sent_command != current_display:
+                if ser and ser.is_open:
+                    try:
+                        cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
+                        cmd_str = f"{cmd_byte}\n"
+                        bytes_written = ser.write(cmd_str.encode('utf-8'))
+                        ser.flush()  # Ensure data is sent immediately
+                        print(f"Sent: {current_display} (byte: {cmd_byte}, bytes written: {bytes_written})")
                         last_sent_command = current_display
-                    last_send_time = current_time
-                except Exception as e:
-                    print("Serial write error:", e)
-            else:
-                if last_sent_command != current_display:
-                    print("Detected (no serial):", current_display)
+                    except serial.SerialException as e:
+                        print(f"[ERROR] Serial write error: {e}")
+                        print("[INFO] Attempting to reconnect...")
+                        ser = connect_serial(COM_PORT, BAUD_RATE)
+                    except Exception as e:
+                        print(f"[ERROR] Unexpected serial error: {e}")
+                else:
+                    print(f"[NO SERIAL] Would send: {current_display} (byte: {COMMAND_MAP.get(current_display, COMMAND_MAP['STOP'])})")
                     last_sent_command = current_display
-                last_send_time = current_time
-
-        # Read serial
+            last_send_time = current_time                
         if ser and ser.is_open:
             try:
                 if ser.in_waiting:
-                    line = ser.readline().decode('utf-8').strip()
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
-                        print("ESP32:", line)
+                        print(f"[ESP32] {line}")
+            except serial.SerialException as e:
+                print(f"[ERROR] Serial read error: {e}")
+                print("[INFO] Attempting to reconnect...")
+                ser = connect_serial(COM_PORT, BAUD_RATE)
             except Exception as e:
-                print("Serial read error:", e)
-
-        # Display label
+                print(f"[ERROR] Unexpected serial read error: {e}")
         color = {
-            "Stop": (0, 0, 255),
-            "Forward": (0, 255, 0),
-            "Downward": (255, 255, 0),
-            "Turn_CW": (255, 0, 255),
-            "Turn_CCW": (0, 255, 255),
-            "Center": (100, 100, 255)
+            "STOP": (0, 0, 255),
+            "FORWARD": (0, 255, 0),
+            "BACKWARD": (255, 255, 0),
+            "ROTATE_CW": (255, 0, 255),
+            "ROTATE_CCW": (0, 255, 255),
+            "CENTER": (100, 100, 255),
+            "SIDEWAY_LEFT": (255, 165, 0),
+            "SIDEWAY_RIGHT": (255, 165, 0),
+            "DIAGONAL_45": (0, 255, 255),
+            "DIAGONAL_135": (0, 255, 255),
+            "DIAGONAL_225": (0, 255, 255),
+            "DIAGONAL_315": (0, 255, 255),
+            "PIVOT_LEFT": (255, 0, 128),
+            "PIVOT_RIGHT": (255, 0, 128)
         }.get(current_display, (0, 255, 255))
 
         cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
         
-        # Display frame
         try:
             cv2.imshow(window_name, frame)
-            # Important: waitKey must be called for window to update
-            # Use waitKey(1) - non-blocking, returns immediately
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
-                print("[Hand_Tracker] 'q' key pressed, exiting")
                 break
         except cv2.error as e:
             print(f"[Hand_Tracker] OpenCV error: {e}")
@@ -311,28 +308,20 @@ def main():
             traceback.print_exc()
             break
         
-        # Check if window was closed by clicking X button (check less frequently to avoid slowdown)
-        # Only check every 30 iterations to avoid performance issues
         if iteration_count % 30 == 0:
             try:
                 if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-                    print("[Hand_Tracker] Window closed by user")
                     break
             except:
-                # Window might not exist, continue
                 pass
 
-    # Cleanup
     cap.release()
     if ser and ser.is_open:
         ser.close()
-        print("Serial port closed")
-    # Only destroy this specific window, not all windows
     try:
         cv2.destroyWindow("Hand + Serial")
     except:
         pass
-    # Don't call destroyAllWindows() as it closes other windows too
 
 
 if __name__ == "__main__":

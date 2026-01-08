@@ -25,6 +25,9 @@ static uint8_t sender_mac[6] = {0};
 static volatile bool sender_mac_known = false;
 static bool sender_peer_added = false;
 
+// Mutex for protecting critical sections when accessing sender_mac
+static portMUX_TYPE sender_mac_mutex = portMUX_INITIALIZER_UNLOCKED;
+
 /**
  * @brief ESP-NOW receive callback (called from ISR context)
  * @param recvInfo Reception information (MAC address, etc.)
@@ -137,9 +140,9 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
     // Copy MAC address to local variable in critical section to prevent race condition
     // This ensures we read a consistent snapshot even if ISR updates it
     uint8_t local_mac[6];
-    taskENTER_CRITICAL();
+    taskENTER_CRITICAL(&sender_mac_mutex);
     memcpy(local_mac, sender_mac, 6);
-    taskEXIT_CRITICAL();
+    taskEXIT_CRITICAL(&sender_mac_mutex);
 
     // Lazily add sender as a peer the first time we try to send back
     if (!sender_peer_added) {
