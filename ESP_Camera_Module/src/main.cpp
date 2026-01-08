@@ -5,31 +5,22 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/message_buffer.h"
+#include "esp_log.h"
 
-// =================== USER SETTINGS ===================
-// Change these to match your WiFi network
 const char *WIFI_SSID     = "iPhone de Yaniv";
 const char *WIFI_PASSWORD = "12345678";
 
-// =================== UDP CONFIGURATION ===================
-// Configuration UDP - Changez l'IP pour correspondre à votre PC
-// Pour trouver votre IP: hostname -I  ou  ip addr show wlo1
-const char* TARGET_IP = "172.20.10.7";  // IP de votre PC (trouvée via ip addr)
+const char* TARGET_IP = "172.20.10.7";
 const int UDP_PORT = 5000;
 
-// UDP fragmentation settings
-const size_t UDP_PACKET_MAX_SIZE = 1400;  // Safe size for WiFi MTU (1500 - headers)
-const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;  // 8 bytes for header
+const size_t UDP_PACKET_MAX_SIZE = 1400;
+const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;
 
-// Packet header structure (8 bytes)
 struct PacketHeader {
-  uint32_t frame_id;        // Frame sequence number
-  uint16_t fragment_id;     // Fragment number (0-based)
-  uint16_t total_fragments;  // Total number of fragments
+  uint32_t frame_id;
+  uint16_t fragment_id;
+  uint16_t total_fragments;
 };
-
-// =================== CAMERA PINS (OV2640 on ESP32-S3) ===================
-// These pins are taken from your existing S3 camera config (camerapins.h)
 #define PWDN_GPIO_NUM    -1
 #define RESET_GPIO_NUM   -1
 #define XCLK_GPIO_NUM    15
@@ -49,120 +40,197 @@ struct PacketHeader {
 #define HREF_GPIO_NUM    7
 #define PCLK_GPIO_NUM    13
 
-// =================== UDP STREAMING ===================
-
-// Message buffer for inter-task communication
 MessageBufferHandle_t frame_buffer;
 
-// Camera task: captures frames and sends them to the message buffer
+// Statistics
+static uint32_t frames_dropped = 0;
+static uint32_t packets_sent = 0;
+static uint32_t packets_failed = 0;
+
 void cam_task(void *pvParameters) {
-  Serial.println("Camera task started");
-  
   while (true) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
-      Serial.println("Camera capture failed");
       vTaskDelay(10 / portTICK_PERIOD_MS);
       continue;
     }
 
-    // Send frame to message buffer
-    // Check if frame fits in buffer (max 35000 bytes)
     if (fb->len > 35000) {
-      Serial.printf("Frame too large (%d bytes) - frame dropped\n", fb->len);
       esp_camera_fb_return(fb);
       vTaskDelay(10 / portTICK_PERIOD_MS);
       continue;
     }
     
-    size_t sent = xMessageBufferSend(frame_buffer, (void *)fb->buf, fb->len, 0);
-    if (sent != fb->len) {
-      Serial.println("Frame buffer full - frame dropped");
+    // Flow control: Check if buffer has space, drop frame if full (non-blocking)
+    size_t space_available = xMessageBufferSpacesAvailable(frame_buffer);
+    if (space_available < fb->len) {
+      // Buffer is full, drop this frame to prevent blocking
+      frames_dropped++;
+      esp_camera_fb_return(fb);
+      vTaskDelay(5 / portTICK_PERIOD_MS);
+      continue;
     }
-
-    // Return frame buffer to camera
-    esp_camera_fb_return(fb);
     
-    // Small delay to prevent WDT reset
+    BaseType_t result = xMessageBufferSend(frame_buffer, (void *)fb->buf, fb->len, 0);
+    if (result != pdTRUE) {
+      frames_dropped++;
+    }
+    esp_camera_fb_return(fb);
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
-// UDP client task: reads frames from message buffer and sends via UDP
-// Static buffer to avoid stack overflow (35000 bytes is too large for stack)
 static uint8_t frame_buffer_data[35000];
 static uint32_t frame_counter = 0;
+static uint32_t last_wifi_check = 0;
+static const uint32_t WIFI_CHECK_INTERVAL_MS = 5000; // Check WiFi every 5 seconds
+
+// Function to check and reconnect WiFi if needed
+bool ensureWiFiConnected() {
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    return true;
+  }
+  
+  // Try to reconnect
+  if (status == WL_DISCONNECTED || status == WL_CONNECTION_LOST) {
+    Serial.printf("[WiFi] Connection lost, attempting reconnect...\n");
+    WiFi.disconnect();
+    delay(100);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      delay(250);
+      attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
+      return true;
+    } else {
+      Serial.printf("[WiFi] Reconnection failed\n");
+      return false;
+    }
+  }
+  
+  return false;
+}
+
+// Function to send UDP packet with retry logic
+bool sendUdpPacket(WiFiUDP& udp, const uint8_t* data, size_t len, uint32_t frame_id, uint16_t frag_id) {
+  const int MAX_RETRIES = 3;
+  int retry_count = 0;
+  
+  while (retry_count < MAX_RETRIES) {
+    // Check WiFi before each attempt
+    if (!ensureWiFiConnected()) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      retry_count++;
+      continue;
+    }
+    
+    // Try to begin packet
+    if (!udp.beginPacket(TARGET_IP, UDP_PORT)) {
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS); // Exponential backoff
+      continue;
+    }
+    
+    // Write data
+    size_t written = udp.write(data, len);
+    if (written != len) {
+      udp.stop();
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
+      continue;
+    }
+    
+    // End packet and check result
+    if (!udp.endPacket()) {
+      packets_failed++;
+      retry_count++;
+      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
+      continue;
+    }
+    
+    // Success
+    packets_sent++;
+    return true;
+  }
+  
+  // All retries failed
+  packets_failed++;
+  return false;
+}
 
 void udp_client_task(void *pvParameters) {
-  Serial.println("UDP client task started");
-  
   WiFiUDP udp;
   
   while (true) {
-    // Wait for WiFi connection
+    // Periodic WiFi status check
+    uint32_t now = millis();
+    if (now - last_wifi_check > WIFI_CHECK_INTERVAL_MS) {
+      ensureWiFiConnected();
+      last_wifi_check = now;
+    }
+    
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("UDP task: Waiting for WiFi...");
       vTaskDelay(1000 / portTICK_PERIOD_MS);
       continue;
     }
 
-    // Read frame from message buffer
-    // Increased buffer size to handle QVGA JPEG frames (can be up to ~30KB)
-    // Buffer is static to avoid stack overflow
     size_t frame_size = xMessageBufferReceive(frame_buffer, (void *)frame_buffer_data, sizeof(frame_buffer_data), portMAX_DELAY);
     
     if (frame_size > 0) {
-      // Calculate number of fragments needed
       uint16_t total_fragments = (frame_size + UDP_PACKET_DATA_SIZE - 1) / UDP_PACKET_DATA_SIZE;
       frame_counter++;
       
-      // Send frame in fragments
-      bool send_success = true;
+      // Calculate dynamic delay based on fragment size and total fragments
+      // Larger packets and more fragments need more time between sends
+      uint32_t base_delay_ms = 2; // Base delay of 2ms
+      uint32_t fragment_delay = base_delay_ms + (total_fragments / 10); // Add delay for many fragments
+      
       for (uint16_t frag = 0; frag < total_fragments; frag++) {
         size_t offset = frag * UDP_PACKET_DATA_SIZE;
         size_t fragment_size = (offset + UDP_PACKET_DATA_SIZE <= frame_size) 
                                ? UDP_PACKET_DATA_SIZE 
                                : (frame_size - offset);
         
-        // Create packet header
         PacketHeader header;
         header.frame_id = frame_counter;
         header.fragment_id = frag;
         header.total_fragments = total_fragments;
         
-        // Send packet
-        udp.beginPacket(TARGET_IP, UDP_PORT);
-        udp.write((uint8_t*)&header, sizeof(header));
-        size_t written = udp.write(frame_buffer_data + offset, fragment_size);
+        // Prepare packet data
+        uint8_t packet_data[sizeof(header) + fragment_size];
+        memcpy(packet_data, &header, sizeof(header));
+        memcpy(packet_data + sizeof(header), frame_buffer_data + offset, fragment_size);
         
-        if (!udp.endPacket()) {
-          Serial.printf("UDP send failed for fragment %d/%d\n", frag + 1, total_fragments);
-          send_success = false;
+        // Send with retry logic
+        bool success = sendUdpPacket(udp, packet_data, sizeof(packet_data), frame_counter, frag);
+        
+        if (!success && frag == 0) {
+          // If first fragment fails, skip entire frame to avoid partial frames
           break;
         }
         
-        // Small delay between fragments to avoid overwhelming the network
+        // Dynamic delay between fragments (except last one)
         if (frag < total_fragments - 1) {
-          vTaskDelay(1 / portTICK_PERIOD_MS);
+          vTaskDelay(fragment_delay / portTICK_PERIOD_MS);
         }
       }
       
-      if (send_success && total_fragments > 1) {
-        // Only log for fragmented frames to avoid spam
-        static uint32_t last_log_frame = 0;
-        if (frame_counter - last_log_frame >= 30) {
-          Serial.printf("Sent frame %lu (%d bytes, %d fragments)\n", frame_counter, frame_size, total_fragments);
-          last_log_frame = frame_counter;
-        }
+      // Periodic statistics (every 100 frames)
+      if (frame_counter % 100 == 0) {
+        Serial.printf("[Stats] Frames: %lu, Dropped: %lu, Packets Sent: %lu, Failed: %lu\n",
+                      frame_counter, frames_dropped, packets_sent, packets_failed);
       }
     }
     
-    // Small delay to prevent WDT reset
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
-
-// =================== CAMERA INITIALIZATION ===================
 
 bool initCamera() {
   camera_config_t config;
@@ -187,10 +255,8 @@ bool initCamera() {
 
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-
-  // Smaller frame and medium quality = smoother streaming
-  config.frame_size = FRAMESIZE_QVGA;  // 320x240
-  config.jpeg_quality = 15;            // 0 = best, 63 = worst
+  config.frame_size = FRAMESIZE_QVGA;
+  config.jpeg_quality = 15;
   config.fb_count = 2;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
@@ -201,29 +267,21 @@ bool initCamera() {
     return false;
   }
 
-  // Configure camera orientation
-  // Adjust these based on your camera mounting:
-  // - set_hmirror(true) = flip left-right (mirror effect)
-  // - set_vflip(true) = flip upside-down
   sensor_t *s = esp_camera_sensor_get();
   if (s != nullptr) {
-    s->set_hmirror(s, true);   // Horizontal mirror (left-right flip)
-    s->set_vflip(s, true);     // Vertical flip (upside-down flip)
-    Serial.println("Camera orientation: horizontal mirror + vertical flip enabled");
+    s->set_hmirror(s, true);
+    s->set_vflip(s, true);
   }
 
-  Serial.println("Camera init OK");
   return true;
 }
-
-// =================== SETUP & LOOP ===================
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
-
-  Serial.println();
-  Serial.println("=== Simple ESP32-S3 OV2640 Camera ===");
+  
+  esp_log_level_set("wifi", ESP_LOG_ERROR);
+  esp_log_level_set("WiFiUdp", ESP_LOG_ERROR);
 
   if (!psramFound()) {
     Serial.println("No PSRAM found! Camera needs PSRAM on ESP32-S3.");
@@ -239,29 +297,15 @@ void setup() {
     }
   }
 
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
-    Serial.print(".");
     attempts++;
   }
 
-  Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi connected");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("UDP target: ");
-    Serial.print(TARGET_IP);
-    Serial.print(":");
-    Serial.println(UDP_PORT);
-    
-    // Create message buffer for inter-task communication
-    // Increased size to handle QVGA JPEG frames (can be up to ~30KB)
     frame_buffer = xMessageBufferCreate(35000);
     if (frame_buffer == NULL) {
       Serial.println("Failed to create frame buffer!");
@@ -270,7 +314,6 @@ void setup() {
       }
     }
     
-    // Create camera capture task
     xTaskCreate(
       cam_task,
       "cam_task",
@@ -280,26 +323,20 @@ void setup() {
       NULL
     );
     
-    // Create UDP client task
-    // Stack size: buffer is now static (outside stack), so 8KB is sufficient
     xTaskCreate(
       udp_client_task,
       "udp_client",
-      8192,  // Sufficient now that 35KB buffer is static (not on stack)
+      8192,
       NULL,
       configMAX_PRIORITIES,
       NULL
     );
-    
-    Serial.println("UDP streaming tasks started");
   } else {
     Serial.println("WiFi connection failed. Check SSID/PASSWORD.");
   }
 }
 
 void loop() {
-  // Nothing to do here.
-  // The camera server runs in the background (in its own task).
   delay(1000);
 }
 
