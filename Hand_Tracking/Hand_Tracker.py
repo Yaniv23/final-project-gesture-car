@@ -1,3 +1,4 @@
+from datetime import datetime
 import cv2
 import mediapipe as mp
 import math
@@ -82,7 +83,15 @@ ser = connect_serial(COM_PORT, BAUD_RATE)
 last_detected = ""
 current_display = "STOP"
 stable_counter = 0
-stable_threshold = 6
+stable_threshold = 3  # Reduced from 6 to 3 for faster detection
+stable_threshold_stop = 2  # Even faster for STOP commands (safety)
+
+# Hand tracking variables for consistent single-hand tracking
+tracked_hand_pos = None  # Tuple (x, y) of last tracked wrist position
+tracking_active = False  # Boolean flag indicating if we're currently tracking a hand
+no_hand_timeout = 0.0  # Time since last hand detection (for resetting tracking)
+hand_tracking_timeout = 1.0  # Reset tracking if no hand detected for 1 second
+hand_distance_threshold = 150  # Maximum distance to consider same hand (in pixels)
 
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
@@ -155,6 +164,7 @@ def count_raised_fingers(landmarks):
 def main():
     """Main function for hand tracking - can be called from other modules"""
     global cap, ser, last_detected, current_display, stable_counter, hands
+    global tracked_hand_pos, tracking_active, no_hand_timeout
     
     # Check serial connection status
     if ser is None or not ser.is_open:
@@ -187,9 +197,10 @@ def main():
     iteration_count = 0
     last_send_time = 0
     last_sent_command = None
-    send_interval = 0.2
+    send_interval = 0.1  # Reduced from 0.2s to 0.1s for faster command transmission
     while True:
         iteration_count += 1
+        current_time = time.time()  # Get current time at start of loop iteration
         ret, frame = cap.read()
         if not ret:
             frame_count += 1
@@ -208,16 +219,53 @@ def main():
         cx, cy = w // 2, h // 2
         center_threshold = 60
 
-        cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 1)
-        cv2.line(frame, (0, cy), (w, cy), (180, 180, 180), 2)
-        cv2.line(frame, (0, 0), (w, h), (180, 180, 180), 2)
-        cv2.line(frame, (w, 0), (0, h), (180, 180, 180), 2)
-        cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 1)
+        cv2.line(frame, (cx, 0), (cx, h), (200, 200, 200), 2)
+        cv2.line(frame, (0, cy), (w, cy), (200, 200, 200), 2)
+        cv2.line(frame, (0, 0), (w, h), (200, 200, 200), 2)
+        cv2.line(frame, (w, 0), (0, h), (200, 200, 200), 2)
+        cv2.circle(frame, (cx, cy), center_threshold, (100, 100, 255), 2)
 
         detected_label = ""
 
         if results.multi_hand_landmarks:
-            hand_landmarks = results.multi_hand_landmarks[0]
+            # Smart hand selection: choose hand closest to previously tracked position
+            selected_hand_idx = 0
+            selected_hand_landmarks = None
+            
+            if tracking_active and tracked_hand_pos is not None:
+                # Find hand closest to tracked position
+                min_distance = float('inf')
+                for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                    # Use wrist landmark (index 0) for position tracking
+                    wrist = hand_landmarks.landmark[0]
+                    wrist_x = int(wrist.x * w)
+                    wrist_y = int(wrist.y * h)
+                    distance = math.hypot(wrist_x - tracked_hand_pos[0], wrist_y - tracked_hand_pos[1])
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        selected_hand_idx = idx
+                        selected_hand_landmarks = hand_landmarks
+                
+                # If closest hand is too far, reset tracking (new hand entered)
+                if min_distance > hand_distance_threshold:
+                    tracking_active = False
+                    tracked_hand_pos = None
+                    selected_hand_idx = 0
+                    selected_hand_landmarks = results.multi_hand_landmarks[0]
+            else:
+                # No active tracking, use first hand and initialize tracking
+                selected_hand_landmarks = results.multi_hand_landmarks[0]
+                tracking_active = True
+            
+            # Update tracked position with wrist of selected hand
+         
+            if selected_hand_landmarks:
+                wrist = selected_hand_landmarks.landmark[0]
+                tracked_hand_pos = (int(wrist.x * w), int(wrist.y * h))
+                no_hand_timeout = current_time
+            
+            hand_landmarks = selected_hand_landmarks
             landmarks = hand_landmarks.landmark
 
             x_avg = sum(lm.x for lm in landmarks) / 21
@@ -245,6 +293,15 @@ def main():
             cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
         else:
             detected_label = "STOP"
+            # Update timeout when no hand detected
+            if tracking_active:
+                if no_hand_timeout == 0:
+                    no_hand_timeout = current_time
+                elif current_time - no_hand_timeout > hand_tracking_timeout:
+                    # Reset tracking after timeout
+                    tracking_active = False
+                    tracked_hand_pos = None
+                    no_hand_timeout = 0
 
         if detected_label == last_detected:
             stable_counter += 1
@@ -252,11 +309,13 @@ def main():
             stable_counter = 0
             last_detected = detected_label
 
-        if stable_counter >= stable_threshold:
+        # Adaptive threshold: use lower threshold for STOP commands (safety)
+        threshold = stable_threshold_stop if detected_label == "STOP" else stable_threshold
+        
+        if stable_counter >= threshold:
             if current_display != detected_label:
                 current_display = detected_label
 
-        current_time = time.time()
         if current_display and (current_time - last_send_time) >= send_interval:
             if last_sent_command != current_display:
                 if ser and ser.is_open:
