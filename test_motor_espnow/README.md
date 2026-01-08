@@ -75,9 +75,22 @@ The test provides detailed serial output showing:
 
 ## Notes
 
-- This test uses symlinks to include source files from `../Vehicule/src/`
+- **Automatic Source Inclusion**: This project automatically includes source files from `../Vehicule/src/` using a Python build script (`extra_script.py`)
+- The script automatically scans directories and includes only needed `.cpp` files (excludes servo, ultrasonic, and sensor fusion)
 - All motor commands from the main vehicle are supported
 - Emergency stop can still be triggered manually if needed
 - No automatic obstacle detection or avoidance
+
+## How Source Files Are Linked
+
+The project uses PlatformIO's `extra_scripts` feature to automatically include source files from `../Vehicule/src/`:
+
+1. **Headers**: Automatically found via `-I` flags in `platformio.ini` pointing to `../Vehicule/src/`
+2. **Source Files**: Automatically compiled via `extra_script.py` which:
+   - Scans `control/`, `drivers/`, `communication/`, `shared/`, and `safety/` directories
+   - Includes all `.cpp` files except excluded ones (servo_driver, ultrasonic_driver, etc.)
+   - No need to manually list each file - just add new files to Vehicule and they'll be included automatically
+
+This means you only need to maintain source files in `Vehicule/src/` - no duplication needed!
 
 
