@@ -40,15 +40,6 @@ static int16_t getMotorSpeed() {
     return (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT;
 }
 
-// Get reduced motor speed for non-forward/backward movements
-// reduction_percent: percentage to reduce speed (e.g., 40 = 40% reduction = 60% of original speed)
-static int16_t getMotorSpeedReduced(uint8_t reduction_percent = 40) {
-    // Calculate resulting speed: (100 - reduction_percent)% of original speed
-    // Example: 40% reduction = 60% of original speed
-    uint8_t speed_percent = 100 - reduction_percent;
-    return (getMotorSpeed() * speed_percent) / 100;  // Integer math
-}
-
 void motion_init(MotorDriver* motor_driver) {
     if (motor_driver == nullptr) {
         Serial.println("[ERROR] MotionControl: motor_driver is null");
@@ -70,8 +61,7 @@ void motion_forward() {
         return;
     }
 
-    // INVERTED: Forward now moves backward (negative speed)
-    int16_t speed = -getMotorSpeed();
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
@@ -83,8 +73,7 @@ void motion_backward() {
         return;
     }
 
-    // INVERTED: Backward now moves forward (positive speed)
-    int16_t speed = getMotorSpeed();
+    int16_t speed = -getMotorSpeed();  // Negative for backward
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
@@ -96,30 +85,34 @@ void motion_sideway_left() {
         return;
     }
 
-    int16_t speed = getMotorSpeedReduced(); 
+    // FR: Forward, FL: Backward, BR: Backward, BL: Forward
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
 }
 
-
 void motion_sideway_right() {
     if (!checkInitialized()) {
         return;
     }
-    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
+
+    // FR: Backward, FL: Forward, BR: Forward, BL: Backward
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
 }
+
 void motion_rotate_cw() {
     if (!checkInitialized()) {
         return;
     }
-    // INVERTED: FR: Backward, FL: Forward, BR: Backward, BL: Forward
-    int16_t speed = getMotorSpeedReduced((uint8_t)50);  
+
+    // FR: Backward, FL: Forward, BR: Backward, BL: Forward
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
@@ -131,7 +124,8 @@ void motion_rotate_ccw() {
         return;
     }
 
-    int16_t speed = getMotorSpeedReduced((uint8_t)50);  
+    // FR: Forward, FL: Backward, BR: Forward, BL: Backward
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
@@ -143,24 +137,27 @@ void motion_diagonal_315() {
         return;
     }
 
-    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
-    
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+    // FR: Forward, BL: Forward (others stopped)
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
 }
 
 void motion_diagonal_45() {
     if (!checkInitialized()) {
         return;
     }
-    int16_t speed = -getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
 
+    // FL: Forward, BR: Forward (others stopped)
+    // Set active motors first, then stopped motors
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    // Then stop the other motors
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
 
 void motion_diagonal_225() {
@@ -168,9 +165,9 @@ void motion_diagonal_225() {
         return;
     }
 
-    // INVERTED: FR: Forward, BL: Forward (others stopped)
+    // FR: Backward, BL: Backward (others stopped)
     // Set active motors first, then stopped motors
-    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
+    int16_t speed = -getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
     // Then stop the other motors
@@ -182,9 +179,13 @@ void motion_diagonal_135() {
     if (!checkInitialized()) {
         return;
     }
-    int16_t speed = -getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
+
+    // FL: Backward, BR: Backward (others stopped)
+    // Set active motors first, then stopped motors
+    int16_t speed = -getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    // Then stop the other motors
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
@@ -193,20 +194,24 @@ void motion_pivot_left() {
     if (!checkInitialized()) {
         return;
     }
-    int16_t speed = getMotorSpeedReduced((uint8_t)70);  
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+
+    // FR: Forward, FL: Backward (others stopped)
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0); 
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
 
 void motion_pivot_right() {
     if (!checkInitialized()) {
         return;
     }
-    int16_t speed = getMotorSpeedReduced((uint8_t)70);  
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+
+    // FR: Backward, FL: Forward (others stopped)
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }

@@ -103,7 +103,7 @@ def get_direction_label(angle_deg):
     elif -67.5 < angle_deg <= -22.5:
         return "DIAGONAL_315"
     else:
-        return "STOP"
+        return "CENTER"
 
 def is_hand_closed(landmarks):
     fingers = {
@@ -126,20 +126,17 @@ def is_hand_open(landmarks):
         landmarks[20].y < landmarks[18].y
     )
 
-def count_raised_fingers(landmarks):
-    """Count how many fingers (excluding thumb) are raised"""
-    fingers = {
-        "index": (8, 6),    # tip, pip
-        "middle": (12, 10),
-        "ring": (16, 14),
-        "pinky": (20, 18),
-    }
-    raised_count = 0
-    for tip_idx, pip_idx in fingers.values():
-        if landmarks[tip_idx].y < landmarks[pip_idx].y:  # tip above pip = raised
-            raised_count += 1
-    return raised_count
+def is_circle_ccw(landmarks, w, h):
+    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
+    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
+    distance = math.hypot(x2 - x1, y2 - y1)
+    return distance < 40 and x2 > x1
 
+def is_circle_cw(landmarks, w, h):
+    x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
+    x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
+    distance = math.hypot(x2 - x1, y2 - y1)
+    return distance < 40 and x2 < x1
 
 def main():
     """Main function for hand tracking - can be called from other modules"""
@@ -220,17 +217,26 @@ def main():
 
             if is_hand_closed(landmarks):
                 detected_label = "STOP"
+            elif is_circle_ccw(landmarks, w, h):
+                detected_label = "ROTATE_CCW"
+            elif is_circle_cw(landmarks, w, h):
+                detected_label = "ROTATE_CW"    
+            elif is_hand_open(landmarks) and distance_to_center < center_threshold:
+                detected_label = "CENTER"
             else:
-                raised_fingers = count_raised_fingers(landmarks)
-                if raised_fingers == 1:
-                    detected_label = "ROTATE_CW"
-                elif raised_fingers == 2:
-                    detected_label = "ROTATE_CCW"
-                else:
-                    detected_label = get_direction_label(angle_deg)
+                detected_label = get_direction_label(angle_deg)
 
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
             cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
+            cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
+        else:
+            detected_label = "STOP"
+
+        if detected_label == last_detected:
+            stable_counter += 1
+        else:
+            stable_counter = 0
+            last_detected = detected_label
 
         if stable_counter >= stable_threshold:
             if current_display != detected_label:
