@@ -1,4 +1,3 @@
-from datetime import datetime
 import cv2
 import mediapipe as mp
 import math
@@ -41,57 +40,43 @@ def find_available_ports():
 def connect_serial(port=None, baud=115200, retries=3):
     """Connect to serial port with retry logic and error reporting"""
     target_port = COM_PORT
-    
-    # First, list available ports
     available_ports = find_available_ports()
-    print(f"[Serial] Available ports: {available_ports}")
     
     if not available_ports:
-        print("[ERROR] No serial ports found! Is the ESP32 connected?")
+        print("[ERROR] No serial ports found!")
         return None
     
-    # Check if target port is available
     if target_port not in available_ports:
-        print(f"[WARNING] Port {target_port} not found in available ports!")
-        print(f"[INFO] Trying first available port: {available_ports[0]}")
         target_port = available_ports[0]
     
-    # Try to connect with retries
     for attempt in range(retries):
         try:
-            print(f"[Serial] Attempting to connect to {target_port} at {baud} baud (attempt {attempt + 1}/{retries})...")
             connection = serial.Serial(target_port, baud, timeout=0.1)
-            time.sleep(2)  # Wait for connection to stabilize
+            time.sleep(2)
             if connection.is_open:
-                print(f"[SUCCESS] Connected to {target_port} at {baud} baud")
                 return connection
         except serial.SerialException as e:
-            print(f"[ERROR] Serial connection failed (attempt {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(1)
         except Exception as e:
-            print(f"[ERROR] Unexpected error during serial connection: {e}")
             if attempt < retries - 1:
                 time.sleep(1)
     
-    print(f"[ERROR] Failed to connect to {target_port} after {retries} attempts")
     return None
 
-# Try to connect to serial port
 ser = connect_serial(COM_PORT, BAUD_RATE)
 
 last_detected = ""
 current_display = "STOP"
 stable_counter = 0
-stable_threshold = 3  # Reduced from 6 to 3 for faster detection
-stable_threshold_stop = 2  # Even faster for STOP commands (safety)
+stable_threshold = 3
+stable_threshold_stop = 2
 
-# Hand tracking variables for consistent single-hand tracking
-tracked_hand_pos = None  # Tuple (x, y) of last tracked wrist position
-tracking_active = False  # Boolean flag indicating if we're currently tracking a hand
-no_hand_timeout = 0.0  # Time since last hand detection (for resetting tracking)
-hand_tracking_timeout = 1.0  # Reset tracking if no hand detected for 1 second
-hand_distance_threshold = 150  # Maximum distance to consider same hand (in pixels)
+tracked_hand_pos = None
+tracking_active = False
+no_hand_timeout = 0.0
+hand_tracking_timeout = 1.0
+hand_distance_threshold = 150
 
 def get_direction_label(angle_deg):
     if -22.5 < angle_deg <= 22.5:
@@ -126,52 +111,27 @@ def is_hand_closed(landmarks):
             bent_count += 1
     return bent_count == 4
 
-def is_hand_open(landmarks):
-    return (
-        landmarks[8].y < landmarks[6].y and
-        landmarks[12].y < landmarks[10].y and
-        landmarks[16].y < landmarks[14].y and
-        landmarks[20].y < landmarks[18].y
-    )
-
 def count_raised_fingers(landmarks):
     """Count how many fingers (excluding thumb) are raised"""
     fingers = {
-        "index": (8, 6),    # tip, pip
+        "index": (8, 6),
         "middle": (12, 10),
         "ring": (16, 14),
         "pinky": (20, 18),
     }
     raised_count = 0
     for tip_idx, pip_idx in fingers.values():
-        if landmarks[tip_idx].y < landmarks[pip_idx].y:  # tip above pip = raised
+        if landmarks[tip_idx].y < landmarks[pip_idx].y:
             raised_count += 1
     return raised_count
-
-# Old circle detection functions - no longer used
-# def is_circle_ccw(landmarks, w, h):
-#     x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
-#     x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
-#     distance = math.hypot(x2 - x1, y2 - y1)
-#     return distance < 40 and x2 > x1
-#
-# def is_circle_cw(landmarks, w, h):
-#     x1, y1 = int(landmarks[4].x * w), int(landmarks[4].y * h)
-#     x2, y2 = int(landmarks[8].x * w), int(landmarks[8].y * h)
-#     distance = math.hypot(x2 - x1, y2 - y1)
-#     return distance < 40 and x2 < x1
 
 def main():
     """Main function for hand tracking - can be called from other modules"""
     global cap, ser, last_detected, current_display, stable_counter, hands
     global tracked_hand_pos, tracking_active, no_hand_timeout
     
-    # Check serial connection status
     if ser is None or not ser.is_open:
-        print("[WARNING] Serial connection not available. Attempting to reconnect...")
         ser = connect_serial(COM_PORT, BAUD_RATE)
-        if ser is None or not ser.is_open:
-            print("[WARNING] Running without serial connection. Commands will be printed but not sent.")
     
     if hands is None:
         hands = mp_hands.Hands()
@@ -182,25 +142,22 @@ def main():
             print("[ERROR] Could not open webcam!")
             return
     
-    window_name = "Hand + Serial"
+    window_name = "HandTracking + Serial"
     
     try:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 640, 480)
-    except Exception as e:
-        print(f"[Hand_Tracker] Error creating window: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
         return
     
     frame_count = 0
     iteration_count = 0
     last_send_time = 0
     last_sent_command = None
-    send_interval = 0.1  # Reduced from 0.2s to 0.1s for faster command transmission
+    send_interval = 0.1
     while True:
         iteration_count += 1
-        current_time = time.time()  # Get current time at start of loop iteration
+        current_time = time.time()
         ret, frame = cap.read()
         if not ret:
             frame_count += 1
@@ -228,15 +185,11 @@ def main():
         detected_label = ""
 
         if results.multi_hand_landmarks:
-            # Smart hand selection: choose hand closest to previously tracked position
-            selected_hand_idx = 0
             selected_hand_landmarks = None
             
             if tracking_active and tracked_hand_pos is not None:
-                # Find hand closest to tracked position
                 min_distance = float('inf')
-                for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                    # Use wrist landmark (index 0) for position tracking
+                for hand_landmarks in results.multi_hand_landmarks:
                     wrist = hand_landmarks.landmark[0]
                     wrist_x = int(wrist.x * w)
                     wrist_y = int(wrist.y * h)
@@ -244,22 +197,16 @@ def main():
                     
                     if distance < min_distance:
                         min_distance = distance
-                        selected_hand_idx = idx
                         selected_hand_landmarks = hand_landmarks
                 
-                # If closest hand is too far, reset tracking (new hand entered)
                 if min_distance > hand_distance_threshold:
                     tracking_active = False
                     tracked_hand_pos = None
-                    selected_hand_idx = 0
                     selected_hand_landmarks = results.multi_hand_landmarks[0]
             else:
-                # No active tracking, use first hand and initialize tracking
                 selected_hand_landmarks = results.multi_hand_landmarks[0]
                 tracking_active = True
             
-            # Update tracked position with wrist of selected hand
-         
             if selected_hand_landmarks:
                 wrist = selected_hand_landmarks.landmark[0]
                 tracked_hand_pos = (int(wrist.x * w), int(wrist.y * h))
@@ -275,7 +222,6 @@ def main():
             dx = hx - cx
             dy = cy - hy
             angle_deg = math.degrees(math.atan2(dy, dx))
-            distance_to_center = math.hypot(dx, dy)
 
             if is_hand_closed(landmarks):
                 detected_label = "STOP"
@@ -293,12 +239,10 @@ def main():
             cv2.line(frame, (cx, cy), (hx, hy), (255, 0, 0), 2)
         else:
             detected_label = "STOP"
-            # Update timeout when no hand detected
             if tracking_active:
                 if no_hand_timeout == 0:
                     no_hand_timeout = current_time
                 elif current_time - no_hand_timeout > hand_tracking_timeout:
-                    # Reset tracking after timeout
                     tracking_active = False
                     tracked_hand_pos = None
                     no_hand_timeout = 0
@@ -309,7 +253,6 @@ def main():
             stable_counter = 0
             last_detected = detected_label
 
-        # Adaptive threshold: use lower threshold for STOP commands (safety)
         threshold = stable_threshold_stop if detected_label == "STOP" else stable_threshold
         
         if stable_counter >= threshold:
@@ -322,18 +265,14 @@ def main():
                     try:
                         cmd_byte = COMMAND_MAP.get(current_display, COMMAND_MAP["STOP"])
                         cmd_str = f"{cmd_byte}\n"
-                        bytes_written = ser.write(cmd_str.encode('utf-8'))
-                        ser.flush()  # Ensure data is sent immediately
-                        print(f"Sent: {current_display} (byte: {cmd_byte}, bytes written: {bytes_written})")
+                        ser.write(cmd_str.encode('utf-8'))
+                        ser.flush()
                         last_sent_command = current_display
-                    except serial.SerialException as e:
-                        print(f"[ERROR] Serial write error: {e}")
-                        print("[INFO] Attempting to reconnect...")
+                    except serial.SerialException:
                         ser = connect_serial(COM_PORT, BAUD_RATE)
-                    except Exception as e:
-                        print(f"[ERROR] Unexpected serial error: {e}")
+                    except Exception:
+                        pass
                 else:
-                    print(f"[NO SERIAL] Would send: {current_display} (byte: {COMMAND_MAP.get(current_display, COMMAND_MAP['STOP'])})")
                     last_sent_command = current_display
             last_send_time = current_time                
         if ser and ser.is_open:
@@ -342,12 +281,10 @@ def main():
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         print(f"[ESP32] {line}")
-            except serial.SerialException as e:
-                print(f"[ERROR] Serial read error: {e}")
-                print("[INFO] Attempting to reconnect...")
+            except serial.SerialException:
                 ser = connect_serial(COM_PORT, BAUD_RATE)
-            except Exception as e:
-                print(f"[ERROR] Unexpected serial read error: {e}")
+            except Exception:
+                pass
         color = {
             "STOP": (0, 0, 255),
             "FORWARD": (0, 255, 0),
@@ -371,13 +308,9 @@ def main():
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
-        except cv2.error as e:
-            print(f"[Hand_Tracker] OpenCV error: {e}")
+        except cv2.error:
             break
-        except Exception as e:
-            print(f"[Hand_Tracker] Error displaying frame: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
             break
         
         if iteration_count % 30 == 0:
@@ -391,7 +324,7 @@ def main():
     if ser and ser.is_open:
         ser.close()
     try:
-        cv2.destroyWindow("Hand + Serial")
+        cv2.destroyWindow(window_name)
     except:
         pass
 
