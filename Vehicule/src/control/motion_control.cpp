@@ -194,13 +194,12 @@ void motion_pivot_left() {
     if (!checkInitialized()) {
         return;
     }
-
-    // INVERTED: FR: Backward, FL: Forward (others stopped)
     int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+   
 }
 
 void motion_pivot_right() {
@@ -208,10 +207,9 @@ void motion_pivot_right() {
         return;
     }
 
-    // INVERTED: FR: Forward, FL: Backward (others stopped)
     int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
