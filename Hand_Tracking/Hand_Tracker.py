@@ -27,6 +27,10 @@ COMMAND_MAP = {
     "DIAGONAL_135": 0x0A,
     "PIVOT_LEFT": 0x0B,
     "PIVOT_RIGHT": 0x0C,
+    # Mode control commands
+    "MODE_MANUAL": 0x20,
+    "MODE_AUTONOMOUS": 0x21,
+    "MODE_TOGGLE": 0x22,
 }
 
 def find_available_ports():
@@ -71,6 +75,14 @@ current_display = "STOP"
 stable_counter = 0
 stable_threshold = 3
 stable_threshold_stop = 2
+
+# Mode de conduite (autonome par défaut)
+driving_mode = "AUTONOMOUS"  # Mode par défaut
+mode_toggle_cooldown = 0.0
+mode_toggle_cooldown_duration = 1.0  # 1 seconde entre les changements de mode
+last_mode_sent = None
+mode_toggle_stable_counter = 0
+mode_toggle_stable_threshold = 15  # Nombre de frames consécutives avec 3 doigts levés requis (environ 0.5 seconde à 30 FPS)
 
 tracked_hand_pos = None
 tracking_active = False
@@ -129,6 +141,7 @@ def main():
     """Main function for hand tracking - can be called from other modules"""
     global cap, ser, last_detected, current_display, stable_counter, hands
     global tracked_hand_pos, tracking_active, no_hand_timeout
+    global driving_mode, mode_toggle_cooldown, last_mode_sent, mode_toggle_stable_counter
     
     if ser is None or not ser.is_open:
         ser = connect_serial(COM_PORT, BAUD_RATE)
@@ -227,12 +240,55 @@ def main():
                 detected_label = "STOP"
             else:
                 raised_fingers = count_raised_fingers(landmarks)
-                if raised_fingers == 1:
-                    detected_label = "ROTATE_CW"
-                elif raised_fingers == 2:
-                    detected_label = "ROTATE_CCW"
+                # Détection de 3 doigts levés pour changer de mode
+                if raised_fingers == 3:
+                    # Incrémenter le compteur de stabilité pour le changement de mode
+                    mode_toggle_stable_counter += 1
+                    
+                    # Vérifier si on a maintenu 3 doigts levés assez longtemps
+                    if mode_toggle_stable_counter >= mode_toggle_stable_threshold:
+                        # Vérifier le cooldown pour éviter les changements trop rapides
+                        if current_time - mode_toggle_cooldown >= mode_toggle_cooldown_duration:
+                            # Basculer entre AUTONOMOUS et MANUAL
+                            if driving_mode == "AUTONOMOUS":
+                                driving_mode = "MANUAL"
+                                mode_cmd = COMMAND_MAP["MODE_MANUAL"]
+                            else:
+                                driving_mode = "AUTONOMOUS"
+                                mode_cmd = COMMAND_MAP["MODE_AUTONOMOUS"]
+                            
+                            # Envoyer la commande de mode
+                            if ser and ser.is_open:
+                                try:
+                                    cmd_str = f"{mode_cmd}\n"
+                                    ser.write(cmd_str.encode('utf-8'))
+                                    ser.flush()
+                                    last_mode_sent = driving_mode
+                                    print(f"[MODE] Changement de mode: {driving_mode}")
+                                except serial.SerialException:
+                                    ser = connect_serial(COM_PORT, BAUD_RATE)
+                                except Exception:
+                                    pass
+                            
+                            mode_toggle_cooldown = current_time
+                            mode_toggle_stable_counter = 0  # Réinitialiser après changement
+                            detected_label = "STOP"  # Ne pas bouger pendant le changement de mode
+                        else:
+                            # Pendant le cooldown, réinitialiser le compteur et traiter comme mouvement normal
+                            mode_toggle_stable_counter = 0
+                            detected_label = get_direction_label(angle_deg)
+                    else:
+                        # Pas encore assez de frames, continuer à compter mais ne pas changer de mode
+                        detected_label = "STOP"  # Arrêter le mouvement pendant la détection
                 else:
-                    detected_label = get_direction_label(angle_deg)
+                    # Réinitialiser le compteur si on ne détecte plus 3 doigts
+                    mode_toggle_stable_counter = 0
+                    if raised_fingers == 1:
+                        detected_label = "ROTATE_CW"
+                    elif raised_fingers == 2:
+                        detected_label = "ROTATE_CCW"
+                    else:
+                        detected_label = get_direction_label(angle_deg)
 
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
             cv2.circle(frame, (hx, hy), 10, (0, 255, 0), -1)
@@ -259,6 +315,21 @@ def main():
             if current_display != detected_label:
                 current_display = detected_label
 
+        # Envoyer le mode initial au démarrage ou si le mode a changé
+        if last_mode_sent != driving_mode:
+            if ser and ser.is_open:
+                try:
+                    mode_cmd = COMMAND_MAP["MODE_AUTONOMOUS"] if driving_mode == "AUTONOMOUS" else COMMAND_MAP["MODE_MANUAL"]
+                    cmd_str = f"{mode_cmd}\n"
+                    ser.write(cmd_str.encode('utf-8'))
+                    ser.flush()
+                    last_mode_sent = driving_mode
+                    print(f"[MODE] Mode envoyé: {driving_mode}")
+                except serial.SerialException:
+                    ser = connect_serial(COM_PORT, BAUD_RATE)
+                except Exception:
+                    pass
+        
         if current_display and (current_time - last_send_time) >= send_interval:
             if last_sent_command != current_display:
                 if ser and ser.is_open:
@@ -302,6 +373,14 @@ def main():
         }.get(current_display, (0, 255, 255))
 
         cv2.putText(frame, current_display, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        
+        # Afficher le mode de conduite en haut à droite
+        mode_text = f"Mode: {driving_mode}"
+        mode_text_size = cv2.getTextSize(mode_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+        mode_x = w - mode_text_size[0] - 10
+        mode_y = 30
+        mode_color = (0, 255, 0) if driving_mode == "AUTONOMOUS" else (0, 165, 255)
+        cv2.putText(frame, mode_text, (mode_x, mode_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, mode_color, 2)
         
         try:
             cv2.imshow(window_name, frame)
