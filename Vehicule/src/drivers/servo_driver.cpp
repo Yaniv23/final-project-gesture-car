@@ -94,7 +94,7 @@ void ServoDriver::setAngle(int angle) {
     ledcWrite(ledc_channel_, duty);
 }
 
-void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms) {
+void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms, unsigned long rest_interval_ms) {
     if (!initialized_) {
         return;
     }
@@ -103,6 +103,7 @@ void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigne
     max_angle_ = max_angle;
     step_deg_ = step_deg;
     step_interval_ms_ = interval_ms;
+    rest_interval_ms_ = rest_interval_ms;
     
     current_angle_ = min_angle_;
     last_step_ms_ = millis();

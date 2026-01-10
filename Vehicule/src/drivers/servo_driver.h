@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// Default rest interval between sweeps (1500ms)
+#define DEFAULT_REST_INTERVAL_MS 1500
+
 /**
  * @file servo_driver.h
  * @brief Servo motor driver for scanning/obstacle detection
@@ -37,8 +40,9 @@ public:
      * @param max_angle Maximum angle in degrees
      * @param step_deg Step size in degrees
      * @param interval_ms Time between steps in milliseconds
+     * @param rest_interval_ms Rest interval between sweeps in milliseconds (0 = continuous)
      */
-    void startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms);
+    void startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms, unsigned long rest_interval_ms = DEFAULT_REST_INTERVAL_MS);
     
     /**
      * @brief Update servo sweep (call periodically)
