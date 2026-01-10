@@ -76,8 +76,8 @@ stable_counter = 0
 stable_threshold = 3
 stable_threshold_stop = 2
 
-# Mode de conduite (autonome par défaut)
-driving_mode = "AUTONOMOUS"  # Mode par défaut
+# Mode de conduite (manuel par défaut)
+driving_mode = "MANUAL"  # Mode par défaut
 mode_toggle_cooldown = 0.0
 mode_toggle_cooldown_duration = 1.0  # 1 seconde entre les changements de mode
 last_mode_sent = None
