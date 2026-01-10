@@ -28,7 +28,14 @@ enum CommandByte {
     CMD_DIAGONAL_135 = 0x0A,  
     CMD_PIVOT_LEFT = 0x0B,
     CMD_PIVOT_RIGHT = 0x0C,
-    // Reserved: 0x0D - 0xFF for future commands
+    // Reserved: 0x0D - 0x1F for future commands
+    
+    // Mode control commands (0x20-0x22)
+    CMD_MODE_MANUAL = 0x20,        // Basculer en mode manuel
+    CMD_MODE_AUTONOMOUS = 0x21,    // Basculer en mode autonome
+    CMD_MODE_TOGGLE = 0x22,        // Basculer entre modes
+    
+    // Reserved: 0x23 - 0xEF for future commands
     CMD_INVALID = 0xFF  // Invalid command marker
 };
 

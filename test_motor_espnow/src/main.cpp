@@ -31,7 +31,6 @@
 // Safety (minimal - no sensor-based stops)
 #include "safety/watchdog.h"
 #include "safety/timeout_monitor.h"
-#include "safety/emergency_stop.h"
 
 // Communication
 #include "communication/command_protocol.h"
@@ -135,7 +134,6 @@ void setup() {
     Serial.println("[SETUP] Initializing safety systems...");
     watchdog_init(WATCHDOG_TIMEOUT_MS);
     timeout_monitor_init(COMMAND_TIMEOUT_MS);
-    emergency_stop_init();
     Serial.println("[SETUP] Safety systems initialized (timeout only, no sensors)");
     
     // Create FreeRTOS tasks
@@ -423,9 +421,6 @@ void task_safety_monitor(void *pvParameters) {
         // Check command timeout (if no command received for COMMAND_TIMEOUT_MS, stop motors)
         // Note: timeout_monitor_check() is currently a stub, but structure is in place
         timeout_monitor_check();
-        
-        // Note: No sensor-based emergency stops in this test
-        // Emergency stop can still be triggered manually if needed
         
         vTaskDelayUntil(&lastWakeTime, period);
     }

@@ -1,7 +1,7 @@
 /**
  * @file task_safety_monitor.cpp
  * @brief Safety monitor task - 50ms period, Priority 5 (highest)
- * @details Monitors system health, watchdog, timeouts, emergency stop
+ * @details Monitors system health, watchdog, timeouts
  */
 
 #include <Arduino.h>
@@ -11,7 +11,6 @@
 #include "../shared/queues.h"
 #include "../safety/watchdog.h"
 #include "../safety/timeout_monitor.h"
-#include "../safety/emergency_stop.h"
 
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
@@ -31,13 +30,6 @@ void task_safety_monitor(void *pvParameters) {
         
         // Check command timeout
         timeout_monitor_check();
-        
-        // Check if emergency stop needs to be cleared
-        // This allows recovery after obstacle is removed
-        if (emergency_stop_is_active()) {
-            // Emergency stop is active - just monitor for clearing
-            // (clearing happens when task_sensor_fusion detects no obstacle)
-        }
         
         vTaskDelayUntil(&lastWakeTime, period);
     }

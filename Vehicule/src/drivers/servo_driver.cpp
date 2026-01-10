@@ -1,11 +1,13 @@
 /**
  * @file servo_driver.cpp
- * @brief Servo driver implementation
- * @details Based on Vehicule_Controller.ino servo sweep logic
+ * @brief Servo driver implementation using LEDC PWM directly
+ * @details Uses LEDC channel 4 to avoid conflicts with motors (channels 0-3)
+ *          Based on Vehicule_Controller.ino servo sweep logic
  */
 
 #include "servo_driver.h"
 #include <Arduino.h>
+#include "../config.h"
 
 // Default sweep configuration (matching Vehicule_Controller.ino)
 #define DEFAULT_MIN_ANGLE 0
@@ -16,6 +18,7 @@
 
 ServoDriver::ServoDriver() 
     : pin_(0)
+    , ledc_channel_(SERVO_LEDC_CHANNEL)
     , initialized_(false)
     , current_angle_(DEFAULT_MIN_ANGLE)
     , min_angle_(DEFAULT_MIN_ANGLE)
@@ -33,14 +36,46 @@ ServoDriver::ServoDriver()
 bool ServoDriver::init(uint8_t pin) {
     pin_ = pin;
     
-    // Attach servo to pin (matching Vehicule_Controller.ino: scanServo.attach(SERVO_PIN))
-    servo_.attach(pin);
+    // Initialize LEDC for servo using dedicated channel 4 (motors use 0-3)
+    // Servo requires 50 Hz frequency (20ms period) with 16-bit resolution
+    ledcSetup(ledc_channel_, SERVO_FREQUENCY, SERVO_RESOLUTION);
+    ledcAttachPin(pin, ledc_channel_);
     
     initialized_ = true;
     current_angle_ = min_angle_;
     last_step_ms_ = millis();
     
+    // Set initial position to min angle
+    setAngle(min_angle_);
+    
+    Serial.print("[ServoDriver] Initialized on pin ");
+    Serial.print(pin);
+    Serial.print(" using LEDC channel ");
+    Serial.print(ledc_channel_);
+    Serial.print(" (motors use channels 0-3)");
+    Serial.println();
+    
     return true;
+}
+
+uint32_t ServoDriver::angleToDuty(int angle) {
+    // Clamp angle to valid range
+    if (angle < 0) angle = 0;
+    if (angle > 180) angle = 180;
+    
+    // Convert angle (0-180 degrees) to pulse width (500-2500 microseconds)
+    // Linear mapping: angle 0° -> 500us, angle 180° -> 2500us
+    uint32_t pulse_us = SERVO_MIN_PULSE_US + 
+                       (angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)) / 180;
+    
+    // Convert pulse width to duty cycle
+    // Duty = (pulse_width_us / period_us) * max_duty
+    // Period = 20ms = 20000us for 50Hz
+    // Max duty = 2^16 - 1 = 65535 for 16-bit resolution
+    uint32_t period_us = 1000000 / SERVO_FREQUENCY; // 20000us for 50Hz
+    uint32_t max_duty = (1 << SERVO_RESOLUTION) - 1; // 65535 for 16-bit
+    
+    return (pulse_us * max_duty) / period_us;
 }
 
 void ServoDriver::setAngle(int angle) {
@@ -53,10 +88,13 @@ void ServoDriver::setAngle(int angle) {
     if (angle > 180) angle = 180;
     
     current_angle_ = angle;
-    servo_.write(angle);
+    
+    // Convert angle to PWM duty cycle and write to LEDC
+    uint32_t duty = angleToDuty(angle);
+    ledcWrite(ledc_channel_, duty);
 }
 
-void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms) {
+void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms, unsigned long rest_interval_ms) {
     if (!initialized_) {
         return;
     }
@@ -65,12 +103,16 @@ void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigne
     max_angle_ = max_angle;
     step_deg_ = step_deg;
     step_interval_ms_ = interval_ms;
+    rest_interval_ms_ = rest_interval_ms;
     
     current_angle_ = min_angle_;
     last_step_ms_ = millis();
     sweep_finished_ms_ = millis();
     sweeping_ = true;
     sweep_resting_ = false;
+    
+    // Set initial position
+    setAngle(min_angle_);
 }
 
 void ServoDriver::update() {
@@ -96,9 +138,9 @@ void ServoDriver::update() {
         return;
     }
     
-    // Update servo position (matching Vehicule_Controller.ino: scanServo.write(currentServoAngle))
+    // Update servo position using LEDC PWM (channel 4, separate from motors)
     last_step_ms_ = now;
-    servo_.write(current_angle_);
+    setAngle(current_angle_);
     
     // Check if reached max angle
     if (current_angle_ >= max_angle_) {

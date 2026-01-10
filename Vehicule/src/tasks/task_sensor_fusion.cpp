@@ -9,14 +9,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "../config.h"
-#include "../drivers/servo_driver.h"
-#include "../drivers/ultrasonic_driver.h"
-#include "../safety/emergency_stop.h"
-#include "../control/motion_control.h"
+#include "../control/mode_manager.h"
 
-// Servo and sensor instances
-static ServoDriver servo;
-static Ultrasonic ultrasonic;
+// NOTE: Servo and ultrasonic sensor instances removed
+// They should ONLY be active in autonomous mode, handled by task_autonomous.cpp
+// In manual mode, they must NOT be initialized or used
 
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
@@ -29,48 +26,33 @@ void task_sensor_fusion(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     
-    bool ultrasonic_ok = ultrasonic.init(ULTRASONIC_TRIG, ULTRASONIC_ECHO);
-    bool servo_ok = servo.init(SERVO_PIN);
+    // Get ModeManager instance
+    ModeManager& mode_mgr = ModeManager::getInstance();
     
-    if (servo_ok) {
-        servo.startSweep(0, 60, 5, 300);
-    }
-    
-    // Track previous obstacle state to detect transitions
-    bool prev_obstacle = false;
+    // IMPORTANT: Servo and ultrasonic sensor should ONLY be active in autonomous mode
+    // In manual mode, they should NOT be initialized or used
+    // The autonomous task (task_autonomous.cpp) handles sensor reading in autonomous mode
     
     while (1) {
-        // Update servo sweep (matching updateServoSensor() from Vehicule_Controller.ino)
-        servo.update();
+        // Check current mode
+        bool is_autonomous = mode_mgr.isAutonomousMode();
+        bool is_manual = mode_mgr.isManualMode();
         
-        // Read distance (matching: lastDistanceCm = readDistanceCM())
-        // NOTE: we only perform a single distance measurement per loop
-        //       iteration to keep execution time bounded and avoid
-        //       starving the idle task / task watchdog.
-        float distance = ultrasonic.readDistanceCM();
-        
-        // Check for obstacles (matching Vehicule_Controller.ino logic)
-        // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM)
-        bool obstacle_detected =
-            (distance > 0.0f && distance < EMERGENCY_STOP_DISTANCE_CM);
-        
-        // Only log and change state when obstacle status changes
-        if (obstacle_detected && !prev_obstacle) {
-            // Obstacle just detected
-            Serial.println("⚠️ Object detected close!");
-            Serial.print("[SENSOR] Distance: ");
-            Serial.print(distance);
-            Serial.println(" cm - TRIGGERING EMERGENCY STOP");
-            motion_stop();             // Immediately stop motors
-            emergency_stop_trigger();  // Trigger emergency stop
-            prev_obstacle = true;
-        } else if (!obstacle_detected && prev_obstacle) {
-            // Obstacle just cleared
-            Serial.println("✓ Obstacle cleared - Emergency stop auto-cleared");
-            emergency_stop_clear();    // Clear emergency stop
-            prev_obstacle = false;
+        // In manual mode: servo and ultrasonic sensor should NOT be active
+        // Just wait - do not initialize or use servo/sensor
+        if (is_manual) {
+            vTaskDelayUntil(&lastWakeTime, period);
+            continue;
         }
         
+        // In autonomous mode: the autonomous task handles sensor reading
+        // This task should be idle (energy saving)
+        if (is_autonomous) {
+            vTaskDelayUntil(&lastWakeTime, period);
+            continue;
+        }
+        
+        // Fallback: just wait if mode is unknown
         vTaskDelayUntil(&lastWakeTime, period);
     }
 }

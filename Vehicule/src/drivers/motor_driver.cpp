@@ -30,6 +30,8 @@ bool MotorDriver::init(const MotorConfig motors[4]) {
     for (int i = 0; i < 4; i++) {
         motor_configs_[i] = motors[i];
         // Assign LEDC channel (0-3 for the 4 motors)
+        // NOTE: Channels 0-3 are reserved for motors. Servo uses channel 4 (see config.h)
+        // This prevents LEDC channel conflicts that could stop motors when servo resets
         ledc_channels_[i] = i;
     }
 

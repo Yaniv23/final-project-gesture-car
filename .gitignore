@@ -250,3 +250,7 @@ secrets.json
 # *.png
 # *.gif
 
+# BMAD and Cursor configuration files
+.bmad-core/
+.cursor/
+

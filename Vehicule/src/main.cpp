@@ -23,11 +23,13 @@
 // Safety
 #include "safety/watchdog.h"
 #include "safety/timeout_monitor.h"
-#include "safety/emergency_stop.h"
 
 // Communication
 #include "communication/command_protocol.h"
 #include "communication/espnow_handler.h"
+
+// Control
+#include "control/mode_manager.h"
 
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
@@ -35,6 +37,7 @@ void task_communication(void *pvParameters);
 void task_sensor_fusion(void *pvParameters);
 void task_safety_monitor(void *pvParameters);
 void task_telemetry(void *pvParameters);
+void task_autonomous(void *pvParameters);
 
 // Test function (forward declaration)
 void test_command_reception();
@@ -50,6 +53,7 @@ TaskHandle_t taskHandle_motor = NULL;
 TaskHandle_t taskHandle_sensor = NULL;
 TaskHandle_t taskHandle_comm = NULL;
 TaskHandle_t taskHandle_telemetry = NULL;
+TaskHandle_t taskHandle_autonomous = NULL;
 TaskHandle_t taskHandle_test = NULL;
 
 // Global flag to signal tasks that setup is complete
@@ -142,7 +146,6 @@ void setup() {
     Serial.println("[SETUP] Initializing safety systems...");
     watchdog_init(WATCHDOG_TIMEOUT_MS);
     timeout_monitor_init(COMMAND_TIMEOUT_MS);
-    emergency_stop_init();
     
     // Create FreeRTOS tasks
     Serial.println("========================================");
@@ -151,12 +154,12 @@ void setup() {
     
     // Task 1: Safety Monitor (Highest Priority - 5)
     xTaskCreate(
-        task_safety_monitor,
-        "SafetyMonitor",
-        TASK_STACK_SIZE_SAFETY_MONITOR,
-        NULL,
-        TASK_PRIORITY_SAFETY_MONITOR,
-        &taskHandle_safety
+        task_safety_monitor, // Function to execute
+        "SafetyMonitor", // Task name
+        TASK_STACK_SIZE_SAFETY_MONITOR, // Stack size
+        NULL, // Task parameters
+        TASK_PRIORITY_SAFETY_MONITOR, // Priority
+        &taskHandle_safety // Task handle
     );
     Serial.println("[SETUP] Created task: SafetyMonitor (Priority 5)");
     
@@ -182,8 +185,19 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: SensorFusion (Priority 3)");
     
+    // Task 4: Autonomous (Priority 3)
+    xTaskCreate(
+        task_autonomous,
+        "Autonomous",
+        AUTONOMOUS_TASK_STACK_SIZE,
+        NULL,
+        AUTONOMOUS_TASK_PRIORITY,
+        &taskHandle_autonomous
+    );
+    Serial.println("[SETUP] Created task: Autonomous (Priority 3)");
+    
     #if !SIMULATION_MODE
-    // Task 4: Communication (Priority 2) - Only in normal mode
+    // Task 5: Communication (Priority 2) - Only in normal mode
     xTaskCreate(
         task_communication,
         "Communication",
@@ -209,7 +223,7 @@ void setup() {
     Serial.println("[SETUP] Created task: Telemetry (Priority 1)");
     
     #if SIMULATION_MODE
-    // Task 6: Test Commands (Priority 1) - Only in simulation mode
+    // Task 7: Test Commands (Priority 1) - Only in simulation mode
     xTaskCreate(
         task_test_commands,
         "TestCommands",
