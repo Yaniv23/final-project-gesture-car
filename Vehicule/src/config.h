@@ -88,7 +88,6 @@
 // Safety Settings
 // ============================================================================
 #define WATCHDOG_TIMEOUT_MS        5000   // 5 second watchdog
-#define EMERGENCY_STOP_DISTANCE_CM 10    // Stop if obstacle < 10cm
 
 // ============================================================================
 // Kinematic Parameters (shared with Person 2)

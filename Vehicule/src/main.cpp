@@ -23,7 +23,6 @@
 // Safety
 #include "safety/watchdog.h"
 #include "safety/timeout_monitor.h"
-#include "safety/emergency_stop.h"
 
 // Communication
 #include "communication/command_protocol.h"
@@ -142,7 +141,6 @@ void setup() {
     Serial.println("[SETUP] Initializing safety systems...");
     watchdog_init(WATCHDOG_TIMEOUT_MS);
     timeout_monitor_init(COMMAND_TIMEOUT_MS);
-    emergency_stop_init();
     
     // Create FreeRTOS tasks
     Serial.println("========================================");

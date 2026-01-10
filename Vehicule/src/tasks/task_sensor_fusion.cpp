@@ -11,7 +11,6 @@
 #include "../config.h"
 #include "../drivers/servo_driver.h"
 #include "../drivers/ultrasonic_driver.h"
-#include "../safety/emergency_stop.h"
 #include "../control/motion_control.h"
 
 // Servo and sensor instances
@@ -49,10 +48,10 @@ void task_sensor_fusion(void *pvParameters) {
         //       starving the idle task / task watchdog.
         float distance = ultrasonic.readDistanceCM();
         
-        // Check for obstacles (matching Vehicule_Controller.ino logic)
-        // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM)
+        // Check for obstacles (informative only - no automatic stop)
+        // Obstacle detection threshold: 10cm
         bool obstacle_detected =
-            (distance > 0.0f && distance < EMERGENCY_STOP_DISTANCE_CM);
+            (distance > 0.0f && distance < 10.0f);
         
         // Only log and change state when obstacle status changes
         if (obstacle_detected && !prev_obstacle) {
@@ -60,14 +59,11 @@ void task_sensor_fusion(void *pvParameters) {
             Serial.println("⚠️ Object detected close!");
             Serial.print("[SENSOR] Distance: ");
             Serial.print(distance);
-            Serial.println(" cm - TRIGGERING EMERGENCY STOP");
-            motion_stop();             // Immediately stop motors
-            emergency_stop_trigger();  // Trigger emergency stop
+            Serial.println(" cm - Warning: Obstacle detected (informative only)");
             prev_obstacle = true;
         } else if (!obstacle_detected && prev_obstacle) {
             // Obstacle just cleared
-            Serial.println("✓ Obstacle cleared - Emergency stop auto-cleared");
-            emergency_stop_clear();    // Clear emergency stop
+            Serial.println("✓ Obstacle cleared");
             prev_obstacle = false;
         }
         
