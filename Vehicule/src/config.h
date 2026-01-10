@@ -30,7 +30,7 @@
 #define SERVO_PIN          4
 
 // Ultrasonic Sensor (HC-SR04)
-#define ULTRASONIC_TRIG    18
+#define ULTRASONIC_TRIG    12
 #define ULTRASONIC_ECHO    16
 
 // ============================================================================

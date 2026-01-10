@@ -33,7 +33,7 @@ void task_sensor_fusion(void *pvParameters) {
     bool servo_ok = servo.init(SERVO_PIN);
     
     if (servo_ok) {
-        servo.startSweep(0, 60, 5, 300);
+        servo.startSweep(0, 60, 5, 200 );
     }
     
     // Track previous obstacle state to detect transitions

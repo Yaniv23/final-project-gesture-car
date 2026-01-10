@@ -151,12 +151,12 @@ void setup() {
     
     // Task 1: Safety Monitor (Highest Priority - 5)
     xTaskCreate(
-        task_safety_monitor,
-        "SafetyMonitor",
-        TASK_STACK_SIZE_SAFETY_MONITOR,
-        NULL,
-        TASK_PRIORITY_SAFETY_MONITOR,
-        &taskHandle_safety
+        task_safety_monitor, // Function to execute
+        "SafetyMonitor", // Task name
+        TASK_STACK_SIZE_SAFETY_MONITOR, // Stack size
+        NULL, // Task parameters
+        TASK_PRIORITY_SAFETY_MONITOR, // Priority
+        &taskHandle_safety, // Task handle
     );
     Serial.println("[SETUP] Created task: SafetyMonitor (Priority 5)");
     
