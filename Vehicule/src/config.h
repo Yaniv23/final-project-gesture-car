@@ -128,8 +128,7 @@
 #define SCAN_STEP_DEG                 5     // Pas du sweep (degrés)
 #define SCAN_STEP_INTERVAL_MS         50    // Intervalle entre chaque pas (ms)
 #define SCAN_REST_INTERVAL_MS         0     // Pas de pause entre les sweeps (0 = continu)
-#define SCAN_CENTER_ANGLE              30   // Angle considéré comme "centre"
-#define SCAN_CENTER_TOLERANCE         5    // Tolérance pour angles centraux (±5°)
+#define SCAN_CENTER_TOLERANCE         5    // Tolérance pour angles centraux (±5°) - Legacy, not used in triggered scan
 #define SCAN_ANGLES_COUNT              13   // Nombre d'angles (0°, 5°, 10°, ..., 60° = 13 angles)
 #define SCAN_SERVO_STABILIZATION_MS   20   // Temps d'attente pour stabilisation servo avant mesure
 
@@ -140,6 +139,29 @@
 #define STUCK_ALL_DIRECTIONS_THRESHOLD 15   // Si toutes distances < 15cm = bloqué
 #define STUCK_PIVOT_MAX_DURATION_MS   5000  // Durée max de pivot (5s)
 #define STUCK_PIVOT_SPEED             150   // Vitesse de pivot (0-255, utilise AUTONOMOUS_TURN_SPEED)
+
+// ============================================================================
+// Triggered Scan Configuration (Improved Obstacle Avoidance)
+// ============================================================================
+// Scan déclenché - Angles de scan
+#define SCAN_LEFT_ANGLE        45   // Angle gauche pour scan
+#define SCAN_CENTER_ANGLE      90   // Angle centre (avant)
+#define SCAN_RIGHT_ANGLE       135  // Angle droite pour scan
+
+// Distances seuils
+#define CRITICAL_DISTANCE_CM   18   // Distance critique pour déclencher scan
+#define MIN_FREE_SPACE_CM      25   // Espace minimum pour choisir une direction
+
+// Timing servo
+#define SERVO_STABILIZATION_MS 200  // Délai stabilisation servo avant mesure
+
+// Filtrage mesures
+#define FILTER_SAMPLES         5    // Nombre d'échantillons pour moyenne
+#define FILTER_DELAY_MS        20   // Délai entre échantillons
+
+// Détection blocage améliorée
+#define STUCK_BACKUP_COUNT     3    // Nombre de tentatives avant backup long
+#define STUCK_BACKUP_DURATION_MS 1000  // Durée backup long si bloqué
 
 #endif // CONFIG_H
 

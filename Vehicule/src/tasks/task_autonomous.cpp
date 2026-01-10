@@ -2,9 +2,10 @@
  * @file task_autonomous.cpp
  * @brief Autonomous navigation task - 50ms period, Priority 3
  * @details Enhanced obstacle avoidance using servo-mounted ultrasonic sensor
- *          Continuous scanning while moving - servo sweeps 0° to 60° continuously
- *          Distance map stores measurements by angle for intelligent navigation
- *          Includes stuck detection with pivot-on-place recovery
+ *          Triggered scanning: servo fixed at 90° during forward movement
+ *          When obstacle detected, performs 3-direction scan (45°, 90°, 135°)
+ *          Chooses best direction based on scan results
+ *          Includes improved stuck detection with pivot-on-place recovery
  */
 
 #include <Arduino.h>
@@ -24,16 +25,16 @@ static ServoDriver servo;
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
 
-// Distance reading structure for distance map
-struct DistanceReading {
-    int angle;
-    float distance;
+// Scan result structure for triggered 3-direction scan
+struct ScanResult {
+    float distance_left;    // Distance à gauche (45°)
+    float distance_front;   // Distance devant (90°)
+    float distance_right;   // Distance à droite (135°)
     unsigned long timestamp_ms;
+    bool is_valid;
 };
 
-// Distance map: stores distance measurements by angle
-static DistanceReading distance_map[SCAN_ANGLES_COUNT];
-static bool distance_map_valid[SCAN_ANGLES_COUNT];
+static ScanResult last_scan;
 
 // Stuck detection memory structure
 struct StuckDetection {
@@ -42,103 +43,145 @@ struct StuckDetection {
     float last_best_distance;               // Meilleure distance trouvée
     int consecutive_failed_attempts;        // Nombre d'échecs consécutifs
     bool is_stuck;                          // Flag de blocage
+    int consecutive_stuck_count;           // Compteur de tentatives bloquées
 };
 
 static StuckDetection stuck_memory;
 
 // Navigation state machine
 enum NavigationState {
-    STATE_FORWARD,          // Moving forward with continuous scanning
+    STATE_FORWARD,          // Avance avec mesure devant uniquement (servo fixe 90°)
+    STATE_SCAN,             // Scan 3 directions déclenché
+    STATE_DECISION,         // Décision basée sur scan
+    STATE_ACTION,           // Exécution mouvement choisi
     STATE_BACKING_UP,       // Recul sécurisé
-    STATE_TURNING,          // Turning to avoid obstacle
-    STATE_STUCK_PIVOTING,  // Pivot sur place pour trouver chemin
+    STATE_STUCK_PIVOTING,   // Pivot sur place pour trouver chemin
     STATE_STOPPED           // Stopped (safety)
 };
 
 /**
- * @brief Store distance reading in the distance map
- * @param angle Angle in degrees (0-60)
- * @param distance Distance in cm
+ * @brief Mesure distance filtrée (moyenne de plusieurs échantillons)
+ * @param ultrasonic_sensor Référence au capteur
+ * @param samples Nombre d'échantillons pour la moyenne
+ * @return Distance filtrée en cm, ou -1.0 si invalide
  */
-static void storeDistanceReading(int angle, float distance) {
-    // Find the index for this angle (0°, 5°, 10°, ..., 60°)
-    int index = angle / SCAN_STEP_DEG;
-    if (index >= 0 && index < SCAN_ANGLES_COUNT) {
-        distance_map[index].angle = angle;
-        distance_map[index].distance = distance;
-        distance_map[index].timestamp_ms = millis();
-        distance_map_valid[index] = true;
-    }
-}
-
-/**
- * @brief Get distance reading for a specific angle
- * @param angle Angle in degrees
- * @return Distance in cm, or -1.0 if not available
- */
-static float getDistanceAtAngle(int angle) {
-    int index = angle / SCAN_STEP_DEG;
-    if (index >= 0 && index < SCAN_ANGLES_COUNT && distance_map_valid[index]) {
-        return distance_map[index].distance;
-    }
-    return -1.0f;
-}
-
-/**
- * @brief Find the angle with the best (longest) distance
- * @return Best angle in degrees, or -1 if no valid data
- */
-static int findBestAngle() {
-    float max_distance = -1.0f;
-    int best_angle = -1;
+static float filteredDistance(Ultrasonic& ultrasonic_sensor, int samples) {
+    float sum = 0.0f;
+    int valid_count = 0;
     
-    for (int i = 0; i < SCAN_ANGLES_COUNT; i++) {
-        if (distance_map_valid[i] && distance_map[i].distance > max_distance) {
-            max_distance = distance_map[i].distance;
-            best_angle = distance_map[i].angle;
+    for (int i = 0; i < samples; i++) {
+        float dist = ultrasonic_sensor.readDistanceCM();
+        // Filtrer valeurs invalides (négatives ou > 400cm)
+        if (dist >= 0.0f && dist <= 400.0f) {
+            sum += dist;
+            valid_count++;
+        }
+        if (i < samples - 1) {
+            vTaskDelay(pdMS_TO_TICKS(FILTER_DELAY_MS));
         }
     }
     
-    return best_angle;
+    if (valid_count == 0) {
+        return -1.0f;
+    }
+    
+    return sum / valid_count;
 }
 
 /**
- * @brief Check if there's an obstacle in the center (forward direction)
- * @return true if obstacle detected in center angles
+ * @brief Effectue un scan des 3 directions (gauche, avant, droite)
+ * @param ultrasonic_sensor Référence au capteur ultrasonique
+ * @param servo Référence au servo driver
+ * @param result Structure ScanResult à remplir
+ * @return true si scan réussi, false sinon
  */
-static bool isObstacleInCenter() {
-    int center_min = SCAN_CENTER_ANGLE - SCAN_CENTER_TOLERANCE;
-    int center_max = SCAN_CENTER_ANGLE + SCAN_CENTER_TOLERANCE;
+static bool scan3Directions(Ultrasonic& ultrasonic_sensor, 
+                             ServoDriver& servo, 
+                             ScanResult& result) {
+    // 1. Gauche (45°)
+    servo.setAngle(SCAN_LEFT_ANGLE);
+    vTaskDelay(pdMS_TO_TICKS(SERVO_STABILIZATION_MS));
+    result.distance_left = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
     
-    for (int angle = center_min; angle <= center_max; angle += SCAN_STEP_DEG) {
-        float dist = getDistanceAtAngle(angle);
-        if (dist >= 0.0f && dist < OBSTACLE_DISTANCE_THRESHOLD_CM) {
-            return true;
-        }
-    }
-    return false;
+    // 2. Avant (90°)
+    servo.setAngle(SCAN_CENTER_ANGLE);
+    vTaskDelay(pdMS_TO_TICKS(SERVO_STABILIZATION_MS));
+    result.distance_front = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+    
+    // 3. Droite (135°)
+    servo.setAngle(SCAN_RIGHT_ANGLE);
+    vTaskDelay(pdMS_TO_TICKS(SERVO_STABILIZATION_MS));
+    result.distance_right = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+    
+    // Recentrer servo
+    servo.setAngle(SCAN_CENTER_ANGLE);
+    
+    result.timestamp_ms = millis();
+    result.is_valid = (result.distance_left > 0 && 
+                       result.distance_front > 0 && 
+                       result.distance_right > 0);
+    
+    return result.is_valid;
 }
 
 /**
- * @brief Check if all directions are blocked
- * @return true if all measured distances are below threshold
+ * @brief Choisit la meilleure direction basée sur scan
+ * @param scan Résultat du scan 3 directions
+ * @return Direction choisie: 0=GAUCHE, 1=DROITE, 2=AVANT, 3=DEMI_TOUR
  */
-static bool areAllDirectionsBlocked() {
-    bool has_valid_data = false;
-    bool all_blocked = true;
+static int decideDirection(const ScanResult& scan) {
+    // Priorité: Gauche > Droite > Avant > Demi-tour
     
-    for (int i = 0; i < SCAN_ANGLES_COUNT; i++) {
-        if (distance_map_valid[i]) {
-            has_valid_data = true;
-            if (distance_map[i].distance >= STUCK_ALL_DIRECTIONS_THRESHOLD) {
-                all_blocked = false;
-                break;
-            }
-        }
+    if (scan.distance_left > MIN_FREE_SPACE_CM && 
+        scan.distance_left > scan.distance_right) {
+        return 0; // GAUCHE
     }
     
-    return has_valid_data && all_blocked;
+    if (scan.distance_right > MIN_FREE_SPACE_CM && 
+        scan.distance_right >= scan.distance_left) {
+        return 1; // DROITE
+    }
+    
+    if (scan.distance_front > MIN_FREE_SPACE_CM) {
+        return 2; // AVANT
+    }
+    
+    // Tout bloqué - demi-tour
+    return 3; // DEMI_TOUR
 }
+
+/**
+ * @brief Exécute le mouvement choisi
+ * @param direction Direction choisie (0-3: GAUCHE, DROITE, AVANT, DEMI_TOUR)
+ * @param turn_duration_ms Durée de rotation en ms
+ * @return Commande à envoyer
+ */
+static uint8_t executeMovement(int direction, uint32_t turn_duration_ms) {
+    uint8_t command;
+    
+    switch (direction) {
+        case 0: // GAUCHE
+            command = CMD_ROTATE_CCW;
+            break;
+        case 1: // DROITE
+            command = CMD_ROTATE_CW;
+            break;
+        case 2: // AVANT
+            command = CMD_FORWARD;
+            break;
+        case 3: // DEMI_TOUR
+            // Pour demi-tour, on recule d'abord puis on tourne
+            // Cette logique sera gérée dans STATE_ACTION
+            command = CMD_BACKWARD;
+            break;
+        default:
+            command = CMD_STOP;
+            break;
+    }
+    
+    return command;
+}
+
 
 /**
  * @brief Reset stuck detection memory
@@ -149,6 +192,7 @@ static void resetStuckMemory() {
     stuck_memory.last_best_distance = 0.0f;
     stuck_memory.consecutive_failed_attempts = 0;
     stuck_memory.is_stuck = false;
+    stuck_memory.consecutive_stuck_count = 0;
 }
 
 /**
@@ -175,54 +219,34 @@ static void updateStuckMemory(float current_distance, bool is_moving) {
     stuck_memory.last_best_distance = current_distance;
 }
 
+
 /**
- * @brief Check if vehicle is stuck
- * @return true if stuck, false otherwise
+ * @brief Détecte si le robot est coincé (amélioration)
+ * @param consecutive_stuck_count Compteur de tentatives échouées (référence)
+ * @return true si bloqué, false sinon
  */
-static bool checkIfStuck() {
+static bool checkIfStuckImproved(int& consecutive_stuck_count) {
     if (!STUCK_DETECTION_ENABLED) {
         return false;
     }
     
-    // Also check if all directions are blocked
-    if (areAllDirectionsBlocked()) {
-        return true;
+    // Si toutes les directions sont bloquées
+    if (last_scan.is_valid) {
+        if (last_scan.distance_left < MIN_FREE_SPACE_CM &&
+            last_scan.distance_front < MIN_FREE_SPACE_CM &&
+            last_scan.distance_right < MIN_FREE_SPACE_CM) {
+            consecutive_stuck_count++;
+            
+            if (consecutive_stuck_count >= STUCK_BACKUP_COUNT) {
+                return true;
+            }
+        } else {
+            consecutive_stuck_count = 0; // Reset si chemin trouvé
+        }
     }
     
-    return stuck_memory.is_stuck;
+    return false;
 }
-
-/**
- * @brief Turn vehicle toward a specific angle
- * @param target_angle Target angle in degrees (0-60)
- * @return Command byte for turning
- */
-static uint8_t turnTowardAngle(int target_angle) {
-    if (target_angle < 0) {
-        return CMD_ROTATE_CW;  // Default to right if invalid
-    }
-    
-    // If target is to the left of center, turn left (CCW)
-    // If target is to the right of center, turn right (CW)
-    if (target_angle < SCAN_CENTER_ANGLE) {
-        return CMD_ROTATE_CCW;
-    } else {
-        return CMD_ROTATE_CW;
-    }
-}
-
-/**
- * @brief Initialize distance map
- */
-static void initDistanceMap() {
-    for (int i = 0; i < SCAN_ANGLES_COUNT; i++) {
-        distance_map[i].angle = i * SCAN_STEP_DEG;
-        distance_map[i].distance = -1.0f;
-        distance_map[i].timestamp_ms = 0;
-        distance_map_valid[i] = false;
-    }
-}
-
 /**
  * @brief Safe backup function - recule de manière sécurisée
  * @details Inspirée de la fonction safeBackup() du code de référence Obstacle_Avoidance_Bot
@@ -302,8 +326,7 @@ void task_autonomous(void *pvParameters) {
     uint32_t turn_duration_ms = 0;
     uint8_t last_command = CMD_STOP;
     
-    // Initialize distance map and stuck memory
-    initDistanceMap();
+    // Initialize stuck memory
     resetStuckMemory();
     
     while (1) {
@@ -332,27 +355,19 @@ void task_autonomous(void *pvParameters) {
                 Serial.println(servo_ok ? "OK" : "FAIL");
             } else {
                 Serial.println("[AUTO] Entered autonomous mode - Sensors initialized");
-                Serial.println("[AUTO] Starting continuous scanning...");
-                // Reset navigation state to forward with continuous scanning
+                Serial.println("[AUTO] Starting triggered scan mode...");
+                // Reset navigation state to forward
                 nav_state = STATE_FORWARD;
-                // Reset distance map and stuck memory
-                initDistanceMap();
+                // Reset stuck memory
                 resetStuckMemory();
                 // Reset timing variables
                 turn_duration_ms = 0;
                 last_command = CMD_STOP;
                 last_servo_update_ms = millis();
-                // Start continuous sweep (rest_interval_ms = 0 for continuous)
-                servo.startSweep(SCAN_MIN_ANGLE, SCAN_MAX_ANGLE, SCAN_STEP_DEG, SCAN_STEP_INTERVAL_MS, SCAN_REST_INTERVAL_MS);
-                Serial.print("[AUTO] Continuous sweep started: ");
-                Serial.print(SCAN_MIN_ANGLE);
-                Serial.print("° to ");
-                Serial.print(SCAN_MAX_ANGLE);
-                Serial.print("° (step: ");
-                Serial.print(SCAN_STEP_DEG);
-                Serial.print("°, interval: ");
-                Serial.print(SCAN_STEP_INTERVAL_MS);
-                Serial.println("ms)");
+                // Set servo to center position (90°) for forward movement
+                servo.setAngle(SCAN_CENTER_ANGLE);
+                servo.stopSweep();
+                Serial.println("[AUTO] Servo set to center (90°) - ready for triggered scanning");
             }
             sensors_initialized = true;
         }
@@ -363,37 +378,34 @@ void task_autonomous(void *pvParameters) {
         // Navigation state machine
         switch (nav_state) {
             case STATE_FORWARD: {
-                // Continuous scanning while moving forward
+                // Moving forward with servo fixed at 90° (center)
+                // Measure distance only in front
                 unsigned long now = millis();
                 
-                // Update servo sweep (asynchronous)
-                servo.update();
-                
-                // Get current servo angle
-                int current_angle = servo.getCurrentAngle();
+                // Ensure servo is at center position
+                servo.setAngle(SCAN_CENTER_ANGLE);
+                servo.stopSweep();
                 
                 // Measure distance only if servo has stabilized
-                if (now - last_servo_update_ms >= SCAN_SERVO_STABILIZATION_MS) {
-                    float distance = ultrasonic_sensor.readDistanceCM();
+                if (now - last_servo_update_ms >= SERVO_STABILIZATION_MS) {
+                    float distance = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
                     
-                    // Filter out invalid readings (distance > 400cm is likely error)
-                    if (distance >= 0.0f && distance <= 400.0f) {
-                        storeDistanceReading(current_angle, distance);
+                    // Check for obstacle ahead
+                    if (distance >= 0.0f && distance < CRITICAL_DISTANCE_CM) {
+                        // Obstacle detected - stop and trigger scan
+                        command = CMD_STOP;
+                        nav_state = STATE_SCAN;
+                        Serial.print("[AUTO] Obstacle detected at ");
+                        Serial.print(distance);
+                        Serial.println(" cm - triggering scan");
+                        break;
                     }
                     
                     last_servo_update_ms = now;
                 }
                 
-                // Decision logic based on distance map
-                int best_angle = findBestAngle();
-                float best_distance = (best_angle >= 0) ? getDistanceAtAngle(best_angle) : -1.0f;
-                
-                // Check if stuck (check previous command state)
-                static uint8_t prev_forward_command = CMD_STOP;
-                bool is_moving = (prev_forward_command == CMD_FORWARD);
-                updateStuckMemory(best_distance, is_moving);
-                
-                if (checkIfStuck()) {
+                // Check if stuck using improved detection
+                if (checkIfStuckImproved(stuck_memory.consecutive_stuck_count)) {
                     // Vehicle is stuck - enter stuck pivoting state
                     nav_state = STATE_STUCK_PIVOTING;
                     command = CMD_STOP;
@@ -401,23 +413,190 @@ void task_autonomous(void *pvParameters) {
                     break;
                 }
                 
-                // Check for obstacle ahead (center angles)
-                if (isObstacleInCenter()) {
-                    // Obstacle detected ahead - backup
-                    nav_state = STATE_BACKING_UP;
-                    command = CMD_STOP;
-                    Serial.println("[AUTO] Obstacle detected ahead - backing up");
-                } else if (best_angle >= 0 && best_distance >= OBSTACLE_DISTANCE_THRESHOLD_CM) {
-                    // Path is clear - continue forward
-                    command = CMD_FORWARD;
-                } else {
-                    // No valid data or all blocked - stop and scan
-                    command = CMD_STOP;
-                    Serial.println("[AUTO] No valid scan data - waiting");
+                // Path is clear - continue forward
+                command = CMD_FORWARD;
+                break;
+            }
+            
+            case STATE_SCAN: {
+                // Stop motors and perform 3-direction scan
+                command = CMD_STOP;
+                
+                static bool scan_initiated = false;
+                static int scan_step = 0; // 0=init, 1=left, 2=center, 3=right, 4=done
+                static unsigned long last_servo_move_ms = 0;
+                unsigned long now = millis();
+                
+                if (!scan_initiated) {
+                    scan_initiated = true;
+                    scan_step = 1; // Start with left
+                    last_servo_move_ms = 0;
+                    Serial.println("[AUTO] Starting 3-direction scan...");
                 }
                 
-                // Update previous command for stuck detection
-                prev_forward_command = command;
+                // Perform scan over multiple task cycles to avoid blocking
+                switch (scan_step) {
+                    case 1: // Left (45°)
+                        if (last_servo_move_ms == 0) {
+                            servo.setAngle(SCAN_LEFT_ANGLE);
+                            last_servo_move_ms = now;
+                        } else if (now - last_servo_move_ms >= SERVO_STABILIZATION_MS) {
+                            last_scan.distance_left = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+                            scan_step = 2;
+                            last_servo_move_ms = now;
+                        }
+                        break;
+                    case 2: // Center (90°)
+                        if (now - last_servo_move_ms >= SERVO_STABILIZATION_MS) {
+                            servo.setAngle(SCAN_CENTER_ANGLE);
+                            last_servo_move_ms = now;
+                            scan_step = 3;
+                        }
+                        break;
+                    case 3: // Right (135°)
+                        if (now - last_servo_move_ms >= SERVO_STABILIZATION_MS) {
+                            servo.setAngle(SCAN_RIGHT_ANGLE);
+                            last_servo_move_ms = now;
+                            scan_step = 4;
+                        }
+                        break;
+                    case 4: // Measure right and finish
+                        if (now - last_servo_move_ms >= SERVO_STABILIZATION_MS) {
+                            last_scan.distance_right = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+                            // Measure front (center) - servo should already be at center from step 2
+                            // But we need to wait a bit more and measure
+                            servo.setAngle(SCAN_CENTER_ANGLE);
+                            vTaskDelay(pdMS_TO_TICKS(SERVO_STABILIZATION_MS));
+                            last_scan.distance_front = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+                            
+                            last_scan.timestamp_ms = millis();
+                            last_scan.is_valid = (last_scan.distance_left > 0 && 
+                                               last_scan.distance_front > 0 && 
+                                               last_scan.distance_right > 0);
+                            
+                            Serial.print("[AUTO] Scan complete - L:");
+                            Serial.print(last_scan.distance_left);
+                            Serial.print(" F:");
+                            Serial.print(last_scan.distance_front);
+                            Serial.print(" R:");
+                            Serial.println(last_scan.distance_right);
+                            
+                            // Reset for next scan
+                            scan_step = 0;
+                            scan_initiated = false;
+                            nav_state = STATE_DECISION;
+                        }
+                        break;
+                }
+                break;
+            }
+            
+            case STATE_DECISION: {
+                // Analyze scan result and choose direction
+                command = CMD_STOP;
+                
+                if (last_scan.is_valid) {
+                    static int stored_direction = -1;
+                    stored_direction = decideDirection(last_scan);
+                    
+                    Serial.print("[AUTO] Decision: ");
+                    switch (stored_direction) {
+                        case 0:
+                            Serial.println("TURN LEFT");
+                            break;
+                        case 1:
+                            Serial.println("TURN RIGHT");
+                            break;
+                        case 2:
+                            Serial.println("CONTINUE FORWARD");
+                            break;
+                        case 3:
+                            Serial.println("U-TURN");
+                            break;
+                    }
+                    
+                    // Transition to ACTION state (direction is stored in static variable)
+                    nav_state = STATE_ACTION;
+                } else {
+                    // Invalid scan - retry
+                    Serial.println("[AUTO] Invalid scan - retrying");
+                    nav_state = STATE_SCAN;
+                }
+                break;
+            }
+            
+            case STATE_ACTION: {
+                // Execute chosen movement
+                static int action_direction = -1;
+                static bool action_initiated = false;
+                static unsigned long action_start_ms = 0;
+                unsigned long now = millis();
+                
+                if (!action_initiated) {
+                    // Get direction from DECISION state (stored in static variable)
+                    // We need to get it from decideDirection again or use a shared static
+                    // For simplicity, we'll recalculate it
+                    if (last_scan.is_valid) {
+                        action_direction = decideDirection(last_scan);
+                    } else {
+                        // Fallback - go to forward state
+                        nav_state = STATE_FORWARD;
+                        action_initiated = false;
+                        break;
+                    }
+                    
+                    action_initiated = true;
+                    action_start_ms = now;
+                    
+                    // Execute movement
+                    if (action_direction == 3) {
+                        // U-turn: backup first
+                        command = CMD_BACKWARD;
+                        Serial.println("[AUTO] Executing U-turn: backing up first");
+                    } else {
+                        command = executeMovement(action_direction, TURN_DURATION_MS);
+                        Serial.print("[AUTO] Executing movement: ");
+                        Serial.println(action_direction);
+                    }
+                } else {
+                    if (action_direction == 3) {
+                        // U-turn: backup then turn
+                        if (now - action_start_ms < STUCK_BACKUP_DURATION_MS / 2) {
+                            command = CMD_BACKWARD;
+                        } else if (now - action_start_ms < STUCK_BACKUP_DURATION_MS / 2 + TURN_DURATION_MS) {
+                            command = CMD_ROTATE_CW; // Turn right for U-turn
+                        } else {
+                            // U-turn complete
+                            command = CMD_STOP;
+                            action_initiated = false;
+                            action_direction = -1;
+                            nav_state = STATE_FORWARD;
+                            Serial.println("[AUTO] U-turn complete");
+                        }
+                    } else if (action_direction == 0 || action_direction == 1) {
+                        // Turning left or right
+                        if (now - action_start_ms < TURN_DURATION_MS) {
+                            command = executeMovement(action_direction, TURN_DURATION_MS);
+                        } else {
+                            // Turn complete
+                            command = CMD_STOP;
+                            action_initiated = false;
+                            action_direction = -1;
+                            nav_state = STATE_FORWARD;
+                            Serial.println("[AUTO] Turn complete");
+                        }
+                    } else {
+                        // Forward - just continue briefly then return to FORWARD
+                        if (now - action_start_ms < 200) {
+                            command = CMD_FORWARD;
+                        } else {
+                            command = CMD_STOP;
+                            action_initiated = false;
+                            action_direction = -1;
+                            nav_state = STATE_FORWARD;
+                        }
+                    }
+                }
                 break;
             }
             
@@ -461,116 +640,58 @@ void task_autonomous(void *pvParameters) {
                 break;
             }
             
-            case STATE_TURNING: {
-                // Turning to avoid obstacle - continue scanning during turn
-                servo.update();
-                
-                // Measure distance at current servo angle
-                unsigned long now = millis();
-                if (now - last_servo_update_ms >= SCAN_SERVO_STABILIZATION_MS) {
-                    int current_angle = servo.getCurrentAngle();
-                    float distance = ultrasonic_sensor.readDistanceCM();
-                    if (distance >= 0.0f && distance <= 400.0f) {
-                        storeDistanceReading(current_angle, distance);
-                    }
-                    last_servo_update_ms = now;
-                }
-                
-                turn_duration_ms += AUTONOMOUS_TASK_PERIOD_MS;
-                
-                if (turn_duration_ms < TURN_DURATION_MS) {
-                    // Continue turning
-                    command = last_command;  // Keep same turn direction
-                } else {
-                    // Turn completed - check distance map for best direction
-                    int best_angle = findBestAngle();
-                    float best_distance = (best_angle >= 0) ? getDistanceAtAngle(best_angle) : -1.0f;
-                    
-                    if (best_distance >= OBSTACLE_DISTANCE_THRESHOLD_CM) {
-                        // Path is clear - go forward
-                        nav_state = STATE_FORWARD;
-                        command = CMD_FORWARD;
-                        turn_duration_ms = 0;
-                        Serial.print("[AUTO] Turn completed - path clear (");
-                        Serial.print(best_distance);
-                        Serial.println(" cm) - going forward");
-                    } else {
-                        // Still obstacle - continue scanning and re-evaluate
-                        nav_state = STATE_FORWARD;  // Will re-evaluate in next cycle
-                        command = CMD_STOP;
-                        turn_duration_ms = 0;
-                        Serial.println("[AUTO] Turn completed - re-evaluating");
-                    }
-                }
-                break;
-            }
-            
             case STATE_STUCK_PIVOTING: {
                 // Pivot on place to find a clear path
-                // Continue scanning during pivot
-                servo.update();
+                // Use triggered scan to find clear direction
+                command = CMD_PIVOT_LEFT;  // Default pivot direction
                 
-                // Measure distance at current servo angle
-                unsigned long now = millis();
-                if (now - last_servo_update_ms >= SCAN_SERVO_STABILIZATION_MS) {
-                    int current_angle = servo.getCurrentAngle();
-                    float distance = ultrasonic_sensor.readDistanceCM();
-                    if (distance >= 0.0f && distance <= 400.0f) {
-                        storeDistanceReading(current_angle, distance);
-                    }
-                    last_servo_update_ms = now;
-                }
-                
-                // Pivot on place
                 static uint32_t pivot_duration_ms = 0;
+                static bool scan_triggered = false;
                 pivot_duration_ms += AUTONOMOUS_TASK_PERIOD_MS;
                 
-                // Check if a clear path has been found
-                int best_angle = findBestAngle();
-                float best_distance = (best_angle >= 0) ? getDistanceAtAngle(best_angle) : -1.0f;
-                
-                if (best_distance >= OBSTACLE_DISTANCE_THRESHOLD_CM) {
-                    // Clear path found!
-                    nav_state = STATE_TURNING;
-                    command = turnTowardAngle(best_angle);
-                    last_command = command;
-                    turn_duration_ms = 0;
+                // Trigger scan periodically during pivot
+                if (!scan_triggered && pivot_duration_ms >= 500) {
+                    // Trigger a scan to find clear path
+                    nav_state = STATE_SCAN;
+                    scan_triggered = true;
                     pivot_duration_ms = 0;
-                    resetStuckMemory();
-                    Serial.print("[AUTO] Path found at angle ");
-                    Serial.print(best_angle);
-                    Serial.print("° (distance: ");
-                    Serial.print(best_distance);
-                    Serial.println(" cm) - exiting stuck state");
-                } else if (pivot_duration_ms >= STUCK_PIVOT_MAX_DURATION_MS) {
+                    Serial.println("[AUTO] Triggering scan during pivot");
+                    break;
+                }
+                
+                // Check scan result if available
+                if (last_scan.is_valid) {
+                    // Check if any direction is clear
+                    if (last_scan.distance_left > MIN_FREE_SPACE_CM ||
+                        last_scan.distance_front > MIN_FREE_SPACE_CM ||
+                        last_scan.distance_right > MIN_FREE_SPACE_CM) {
+                        // Clear path found - use ACTION state to move
+                        int direction = decideDirection(last_scan);
+                        nav_state = STATE_ACTION;
+                        scan_triggered = false;
+                        pivot_duration_ms = 0;
+                        resetStuckMemory();
+                        Serial.println("[AUTO] Path found - exiting stuck state");
+                        break;
+                    }
+                }
+                
+                if (pivot_duration_ms >= STUCK_PIVOT_MAX_DURATION_MS) {
                     // Max pivot duration reached - try backing up
                     nav_state = STATE_BACKING_UP;
                     pivot_duration_ms = 0;
+                    scan_triggered = false;
                     Serial.println("[AUTO] Still stuck after pivot - trying backup");
-                } else {
-                    // Continue pivoting
-                    command = CMD_PIVOT_LEFT;  // Default pivot direction
                 }
                 break;
             }
             
             case STATE_STOPPED: {
-                // Stopped due to error - continue scanning while stopped
-                servo.update();
-                
-                // Measure distance at current servo angle
-                unsigned long now = millis();
-                if (now - last_servo_update_ms >= SCAN_SERVO_STABILIZATION_MS) {
-                    int current_angle = servo.getCurrentAngle();
-                    float distance = ultrasonic_sensor.readDistanceCM();
-                    if (distance >= 0.0f && distance <= 400.0f) {
-                        storeDistanceReading(current_angle, distance);
-                    }
-                    last_servo_update_ms = now;
-                }
-                
-                // Wait and try to recover
+                // Stopped due to error - wait and try to recover
                 command = CMD_STOP;
+                servo.setAngle(SCAN_CENTER_ANGLE);
+                servo.stopSweep();
+                
                 static uint32_t stop_time_ms = 0;
                 stop_time_ms += AUTONOMOUS_TASK_PERIOD_MS;
                 if (stop_time_ms >= 1000) {
@@ -584,7 +705,7 @@ void task_autonomous(void *pvParameters) {
             }
         }
         
-        // Store last command for turning state
+        // Store last command for reference
         if (command == CMD_ROTATE_CW || command == CMD_ROTATE_CCW) {
             last_command = command;
         }
