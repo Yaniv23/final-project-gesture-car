@@ -11,7 +11,6 @@
 #include "../shared/queues.h"
 #include "../safety/watchdog.h"
 #include "../safety/timeout_monitor.h"
-#include "../safety/emergency_stop.h"
 
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;

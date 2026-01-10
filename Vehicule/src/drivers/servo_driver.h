@@ -1,14 +1,14 @@
 #ifndef SERVO_DRIVER_H
 #define SERVO_DRIVER_H
 
-#include <ESP32Servo.h>
 #include <stdint.h>
 #include <stdbool.h>
 
 /**
  * @file servo_driver.h
  * @brief Servo motor driver for scanning/obstacle detection
- * @details Based on Vehicule_Controller.ino servo implementation
+ * @details Uses LEDC PWM directly (channel 4) to avoid conflicts with motors (channels 0-3)
+ *          Based on Vehicule_Controller.ino servo implementation
  */
 
 class ServoDriver {
@@ -64,8 +64,8 @@ public:
     int getCurrentAngle() const;
     
 private:
-    Servo servo_;
     uint8_t pin_;
+    uint8_t ledc_channel_;
     bool initialized_;
     
     // Sweep state variables (matching Vehicule_Controller.ino)
@@ -79,6 +79,13 @@ private:
     bool sweeping_;
     bool sweep_resting_;
     unsigned long rest_interval_ms_;
+    
+    /**
+     * @brief Convert angle (degrees) to PWM duty cycle
+     * @param angle Angle in degrees (0-180)
+     * @return PWM duty cycle value
+     */
+    uint32_t angleToDuty(int angle);
 };
 
 #endif // SERVO_DRIVER_H

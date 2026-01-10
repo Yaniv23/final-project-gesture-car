@@ -27,7 +27,13 @@
 #define BACK_LEFT_IN1      21  // Back Left direction pin 1 (BIN1 on Driver #1)
 #define BACK_LEFT_IN2      22  // Back Left direction pin 2 (BIN2 on Driver #1)
 // Servo Motor (for scanning)
+// Using LEDC channel 4 to avoid conflict with motors (channels 0-3)
 #define SERVO_PIN          4
+#define SERVO_LEDC_CHANNEL 4
+#define SERVO_FREQUENCY    50   // 50 Hz (20ms period) - standard servo frequency
+#define SERVO_RESOLUTION   16   // 16-bit resolution for precision
+#define SERVO_MIN_PULSE_US 500  // 0.5ms pulse for 0 degrees
+#define SERVO_MAX_PULSE_US 2500 // 2.5ms pulse for 180 degrees
 
 // Ultrasonic Sensor (HC-SR04)
 #define ULTRASONIC_TRIG    12
@@ -97,6 +103,20 @@
 #define WHEEL_RADIUS_M             0.05f   // 5cm radius (adjust to actual)
 #define WHEEL_BASE_M               0.20f   // 20cm front-to-back (adjust)
 #define TRACK_WIDTH_M              0.18f   // 18cm left-to-right (adjust)
+
+// ============================================================================
+// Autonomous Mode Settings
+// ============================================================================
+#define AUTONOMOUS_TASK_PRIORITY     3
+#define AUTONOMOUS_TASK_PERIOD_MS    50   // 20 Hz
+#define AUTONOMOUS_TASK_STACK_SIZE   4096
+
+// Navigation parameters
+#define OBSTACLE_DISTANCE_THRESHOLD_CM  20  // Distance minimale avant obstacle
+#define SAFE_DISTANCE_CM                30  // Distance de sécurité
+#define TURN_DURATION_MS                1000 // Durée de rotation (1 seconde)
+#define AUTONOMOUS_FORWARD_SPEED       200  // Vitesse avant en mode autonome
+#define AUTONOMOUS_TURN_SPEED          150  // Vitesse de rotation
 
 #endif // CONFIG_H
 

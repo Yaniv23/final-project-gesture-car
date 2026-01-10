@@ -69,9 +69,19 @@ void task_communication(void *pvParameters) {
                     Serial.println("[COMM] 💓 HEARTBEAT frame received (ignored for now)");
                 } else {
                     // -----------------------------------------------------------------
-                    // Normal motion commands
+                    // Normal motion commands and mode control commands
                     // -----------------------------------------------------------------
+                    // Check if it's a valid motion command (0x00-0x0C)
                     if (isValidCommand(first_byte)) {
+                        uint8_t cmd_byte = first_byte;
+                        if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
+                            Serial.println("[COMM] Warning: Command queue full!");
+                        }
+                    } 
+                    // Check if it's a mode control command (0x20-0x22)
+                    else if (first_byte == CMD_MODE_MANUAL || 
+                             first_byte == CMD_MODE_AUTONOMOUS || 
+                             first_byte == CMD_MODE_TOGGLE) {
                         uint8_t cmd_byte = first_byte;
                         if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
                             Serial.println("[COMM] Warning: Command queue full!");

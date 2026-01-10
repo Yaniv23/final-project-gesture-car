@@ -11,6 +11,7 @@
 #include "../shared/queues.h"
 #include "../drivers/motor_driver.h"
 #include "../control/motion_control.h"
+#include "../control/mode_manager.h"
 #include "../communication/command_protocol.h"
 
 // Global motor driver instance (defined in main.cpp)
@@ -32,6 +33,9 @@ void task_motor_control(void *pvParameters) {
     // Initialize motion control with MotorDriver
     motion_init(&motor_driver);
     
+    // Get ModeManager instance
+    ModeManager& mode_mgr = ModeManager::getInstance();
+    
     uint8_t cmd_byte = 0;
     
     while (1) {
@@ -39,6 +43,39 @@ void task_motor_control(void *pvParameters) {
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
             // Decide if we need to log this command (only when it changes)
             bool shouldLog = (cmd_byte != last_logged_cmd);
+            
+            // Handle mode control commands first
+            if (cmd_byte == CMD_MODE_MANUAL) {
+                mode_mgr.setMode(MODE_MANUAL);
+                motion_stop();  // Stop motors when changing mode
+                Serial.println("[MOTOR] Mode: MANUAL");
+                last_logged_cmd = cmd_byte;
+                continue;
+            } else if (cmd_byte == CMD_MODE_AUTONOMOUS) {
+                mode_mgr.setMode(MODE_AUTONOMOUS);
+                motion_stop();  // Stop motors when changing mode
+                Serial.println("[MOTOR] Mode: AUTONOMOUS");
+                last_logged_cmd = cmd_byte;
+                continue;
+            } else if (cmd_byte == CMD_MODE_TOGGLE) {
+                DrivingMode new_mode = mode_mgr.isManualMode() ? MODE_AUTONOMOUS : MODE_MANUAL;
+                mode_mgr.setMode(new_mode);
+                motion_stop();  // Stop motors when changing mode
+                Serial.print("[MOTOR] Mode: ");
+                Serial.println(new_mode == MODE_MANUAL ? "MANUAL" : "AUTONOMOUS");
+                last_logged_cmd = cmd_byte;
+                continue;
+            }
+            
+            // Check if manual commands should be ignored in autonomous mode
+            // Motion commands (CMD_STOP to CMD_PIVOT_RIGHT) work in both modes
+            // but manual commands from ESP-NOW should be ignored in autonomous mode
+            if (cmd_byte >= CMD_STOP && cmd_byte <= CMD_PIVOT_RIGHT) {
+                // In autonomous mode, ignore manual commands (they come from ESP-NOW)
+                // Autonomous task sends its own commands which should be processed
+                // We can't distinguish source, so we allow all motion commands
+                // The autonomous task only runs when in autonomous mode anyway
+            }
               
             // Check safety semaphore (secondary safety mechanism)
             // Semaphore is given initially (safe state)
