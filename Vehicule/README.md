@@ -175,7 +175,7 @@ Task priorities and periods (in `src/config.h`):
 
 ### Pairing with Sender
 
-The sender ESP32 needs to know the vehicle controller's MAC address. See [Sender Documentation](../Transmission/Sender_Code/README.md) for configuration.
+The sender ESP32 needs to know the vehicle controller's MAC address. See [Sender Documentation](../pc_side/Sender_Code/README.md) for configuration.
 
 ## Serial Monitor Usage
 

@@ -36,24 +36,24 @@ if command -v gnome-terminal &> /dev/null; then
     # Launch terminal - it will close automatically when the command exits
     gnome-terminal --title="ESP32 Camera Stream" \
         --working-directory="$SCRIPT_DIR" \
-        -- bash -c "./ESP_Camera_Module/start_stream.sh; exit" &
+        -- bash -c "./pc_side/ESP_Camera_Module/start_stream.sh; exit" &
     TERMINAL_PIDS+=($!)
     sleep 1
     
     # Launch Hand Tracker terminal
     gnome-terminal --title="Hand Tracker" \
-        --working-directory="$SCRIPT_DIR" \
-        -- bash -c "python3 Hand_Tracking/Hand_Tracker.py; exit" &
+        --working-directory="$SCRIPT_DIR/pc_side/Hand_Tracking" \
+        -- bash -c "python3 Hand_Tracker.py; exit" &
     TERMINAL_PIDS+=($!)
     
 elif command -v xterm &> /dev/null; then
     echo "[INFO] Using xterm"
     # xterm closes automatically when command exits
-    xterm -T "ESP32 Camera Stream" -e bash -c "cd '$SCRIPT_DIR' && ./ESP_Camera_Module/start_stream.sh; exit" &
+    xterm -T "ESP32 Camera Stream" -e bash -c "cd '$SCRIPT_DIR' && ./pc_side/ESP_Camera_Module/start_stream.sh; exit" &
     TERMINAL_PIDS+=($!)
     sleep 1
     
-    xterm -T "Hand Tracker" -e bash -c "cd '$SCRIPT_DIR' && python3 Hand_Tracking/Hand_Tracker.py; exit" &
+    xterm -T "Hand Tracker" -e bash -c "cd '$SCRIPT_DIR/pc_side/Hand_Tracking' && python3 Hand_Tracker.py; exit" &
     TERMINAL_PIDS+=($!)
     
 else

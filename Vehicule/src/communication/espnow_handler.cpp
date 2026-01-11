@@ -121,12 +121,6 @@ bool espnow_init(bool simulation_mode) {
 }
 
 bool espnow_send_bytes(const uint8_t* data, size_t len) {
-    // In simulation mode we never use ESP-NOW for sending
-    #if SIMULATION_MODE
-    (void)data;
-    (void)len;
-    return false;
-    #else
     if (data == nullptr || len == 0) {
         return false;
     }
@@ -166,9 +160,8 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
         Serial.println(res);
         return false;
     }
-
+    
     return true;
-    #endif
 }
 
 bool espnow_send_handshake_ack(uint8_t status_byte) {
@@ -199,11 +192,6 @@ bool espnow_is_connected() {
 }
 
 bool espnow_wait_for_connection(uint32_t timeout_ms) {
-    // In simulation mode, return immediately
-    #if SIMULATION_MODE
-    return true;
-    #endif
-    
     // Reset connection flag
     espnow_connected = false;
     

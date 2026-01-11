@@ -103,7 +103,7 @@ graph TB
 
 See component-specific documentation for detailed pin assignments:
 - [Vehicle Controller Pins](Vehicule/README.md#hardware-connections)
-- [Camera Module Pins](ESP_Camera_Module/README.md#hardware-setup)
+- [Camera Module Pins](pc_side/ESP_Camera_Module/README.md#hardware-setup)
 
 ## Software Dependencies
 
@@ -138,7 +138,7 @@ The ESP32 sender code can be uploaded using Arduino IDE if preferred.
 
 **Python packages:**
 ```bash
-python -m venv venv  # Optional: create virtual environment (can be in Hand_Tracking/ or project root)
+python -m venv venv  # Optional: create virtual environment (can be in pc_side/Hand_Tracking/ or project root)
 source venv/bin/activate  # Linux/Mac, or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt  # Install from project root
 ```
@@ -155,7 +155,7 @@ pip install platformio
    - **Linux**: `/dev/ttyUSB0` or `/dev/ttyACM0`
    - **Windows**: `COM3`, `COM11`, etc. (check Device Manager)
    - **macOS**: `/dev/cu.usbserial-*`
-3. Upload sender code (see [Sender Documentation](Transmission/Sender_Code/README.md))
+3. Upload sender code (see [Sender Documentation](pc_side/Sender_Code/README.md))
 
 ### Step 3: Build and Upload Vehicle Controller
 
@@ -170,7 +170,7 @@ pio run -t upload
 ### Step 4: Build and Upload Camera Module
 
 ```bash
-cd ESP_Camera_Module
+cd pc_side/ESP_Camera_Module
 # Edit src/main.cpp to set WiFi SSID and password
 # Edit platformio.ini to set your upload port
 pio run -t upload
@@ -180,7 +180,7 @@ pio run -t upload
 
 ### Step 5: Configure Hand Tracking
 
-Edit `Hand_Tracking/constant.py`:
+Edit `pc_side/Hand_Tracking/constant.py`:
 ```python
 COM_PORT = '/dev/ttyACM0'  # Your ESP32 sender port
 BAUD_RATE = 115200
@@ -188,7 +188,7 @@ BAUD_RATE = 115200
 
 ### Step 6: Configure Sender MAC Address
 
-Edit `Transmission/Sender_Code/Sender_Code.ino`:
+Edit `pc_side/Sender_Code/Sender_Code.ino`:
 ```cpp
 uint8_t receiverMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};  // Vehicle MAC
 ```
@@ -203,11 +203,11 @@ uint8_t receiverMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};  // Vehicle MAC
 **Option 2: Manual launch**
 ```bash
 # Terminal 1: Start hand tracking
-cd Hand_Tracking
+cd pc_side/Hand_Tracking
 python Hand_Tracker.py
 
 # Terminal 2: View camera stream
-cd ESP_Camera_Module/src
+cd pc_side/ESP_Camera_Module/src
 python camera_viewer.py --ip 192.168.1.100
 ```
 
@@ -233,7 +233,7 @@ pio device monitor
 ### Camera Module
 
 ```bash
-cd ESP_Camera_Module
+cd pc_side/ESP_Camera_Module
 
 # Build and upload
 pio run -t upload
@@ -248,7 +248,7 @@ pio device monitor
 
 **Using PlatformIO** (if you create a platformio.ini):
 ```bash
-cd Transmission/Sender_Code
+cd pc_side/Sender_Code
 pio run -t upload
 ```
 
@@ -267,12 +267,12 @@ pio run -t upload
 3. **Power on ESP32-S3 camera** (wait for WiFi connection)
 4. **Start hand tracking**:
    ```bash
-   cd Hand_Tracking
+   cd pc_side/Hand_Tracking
    python Hand_Tracker.py
    ```
 5. **View camera stream** (optional):
    ```bash
-   cd ESP_Camera_Module/src
+   cd pc_side/ESP_Camera_Module/src
    python camera_viewer.py --ip <CAMERA_IP>
    ```
 
@@ -295,9 +295,9 @@ For detailed information on each component:
 
 - **[Vehicle Controller](Vehicule/README.md)** - ESP32 vehicle control system
   - [Technical Details](docs/VEHICLE_CONTROLLER.md) - Architecture, FreeRTOS, protocols
-- **[Hand Tracking](Hand_Tracking/README.md)** - PC-side gesture recognition
-- **[Camera Module](ESP_Camera_Module/README.md)** - ESP32-S3 video streaming
-- **[ESP32 Sender](Transmission/Sender_Code/README.md)** - Wireless command bridge
+- **[Hand Tracking](pc_side/Hand_Tracking/README.md)** - PC-side gesture recognition
+- **[Camera Module](pc_side/ESP_Camera_Module/README.md)** - ESP32-S3 video streaming
+- **[ESP32 Sender](pc_side/Sender_Code/README.md)** - Wireless command bridge
 - **[PC Side Components](docs/PC_SIDE_COMPONENTS.md)** - Technical overview
 
 ## Troubleshooting
@@ -305,7 +305,7 @@ For detailed information on each component:
 ### Hand Tracking Issues
 
 **Problem**: No serial connection
-- **Solution**: Check `COM_PORT` in `Hand_Tracking/constant.py` matches your ESP32 sender port
+- **Solution**: Check `COM_PORT` in `pc_side/Hand_Tracking/constant.py` matches your ESP32 sender port
 - **Check**: ESP32 sender is connected and Serial Monitor shows "🟢 Sender ready"
 
 **Problem**: Gesture not recognized
@@ -359,21 +359,21 @@ For detailed information on each component:
 final-project-gesture-car/
 ├── README.md                    # This file
 ├── requirements.txt            # Python dependencies (project root)
-├── Hand_Tracking/              # PC-side hand gesture recognition
-│   ├── Hand_Tracker.py         # Main tracking script
-│   └── constant.py             # Serial port configuration
+├── pc_side/                    # PC-side components
+│   ├── Hand_Tracking/          # Hand gesture recognition
+│   │   ├── Hand_Tracker.py     # Main tracking script
+│   │   └── constant.py         # Serial port configuration
+│   ├── ESP_Camera_Module/      # ESP32-S3 camera streaming
+│   │   ├── src/
+│   │   │   ├── main.cpp        # Camera firmware
+│   │   │   └── camera_viewer.py # PC viewer
+│   │   └── README.md           # Camera documentation
+│   └── Sender_Code/            # ESP32 sender
+│       └── README.md           # Sender documentation
 ├── Vehicule/                   # ESP32 vehicle controller
 │   ├── src/                    # Source code
 │   ├── platformio.ini         # Build configuration
 │   └── README.md              # Vehicle documentation
-├── ESP_Camera_Module/          # ESP32-S3 camera streaming
-│   ├── src/
-│   │   ├── main.cpp           # Camera firmware
-│   │   └── camera_viewer.py   # PC viewer
-│   └── README.md              # Camera documentation
-├── Transmission/               # Communication modules
-│   └── Sender_Code/           # ESP32 sender
-│       └── README.md          # Sender documentation
 └── docs/                       # Technical documentation
     ├── VEHICLE_CONTROLLER.md  # Vehicle technical details
     └── PC_SIDE_COMPONENTS.md  # PC components technical details

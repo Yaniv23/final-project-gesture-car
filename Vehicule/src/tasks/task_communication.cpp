@@ -27,23 +27,12 @@ void task_communication(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
     }
     
-    #if SIMULATION_MODE
-    Serial.println("[TASK_COMM] Running in SIMULATION MODE - ESP-NOW disabled");
-    Serial.println("[TASK_COMM] Commands can be sent directly to xCommandQueue for testing");
-    #else
     // ESP-NOW is initialized once in main.cpp during setup()
     Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
-    #endif
     
     ESPNowRawMessage raw_msg;
     
     while (1) {
-        #if SIMULATION_MODE
-        // In simulation mode, just process commands from xCommandQueue
-        // Test tasks can directly send to xCommandQueue
-        // This task doesn't need to do anything except yield CPU time
-        vTaskDelayUntil(&lastWakeTime, period);
-        #else
         // Read command from ESP-NOW queue (ISR puts commands here)
         if (xQueueReceive(xESPNowQueue, &raw_msg, pdMS_TO_TICKS(TASK_PERIOD_COMMUNICATION))) {
             if (raw_msg.length >= 1) {
@@ -95,6 +84,5 @@ void task_communication(void *pvParameters) {
         }
         
         vTaskDelayUntil(&lastWakeTime, period);
-        #endif
     }
 }

@@ -60,10 +60,10 @@ REM Navigate to the Hand_Tracking directory
 REM Script is in setup/ folder, so go up one level to project root
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR%.."
-set "HAND_TRACKING_DIR=%PROJECT_ROOT%\Hand_Tracking"
+set "HAND_TRACKING_DIR=%PROJECT_ROOT%\pc_side\Hand_Tracking"
 
 if not exist "%HAND_TRACKING_DIR%" (
-    echo [ERROR] Directory 'Hand_Tracking' not found!
+    echo [ERROR] Directory 'pc_side\Hand_Tracking' not found!
     echo Make sure you're running this script from the project root.
     pause
     exit /b 1
@@ -149,7 +149,7 @@ echo Python dependencies have been installed successfully.
 echo.
 echo To use the project:
 echo   1. Activate the virtual environment:
-echo      cd Hand_Tracking
+echo      cd pc_side\Hand_Tracking
 echo      venv\Scripts\activate.bat
 echo.
 echo   2. Run the hand tracker:

@@ -20,15 +20,6 @@ extern QueueHandle_t xESPNowQueue;
 // Holds uint8_t command bytes (validated commands)
 extern QueueHandle_t xCommandQueue;
 
-// Queue: Communication Task → Motor Control Task (reserved for future use)
-// Holds BodyVelocity commands from PC/gesture system
-// NOTE: Currently unused - reserved for future kinematics/velocity control implementation
-extern QueueHandle_t xMotionCommandQueue;
-
-// Queue: Motor Control Task → Telemetry Task (optional)
-// Holds WheelVelocities + PWM values for status reporting
-extern QueueHandle_t xMotorStatusQueue;
-
 // Semaphore: Safety Monitor → Motor Control Task
 // Semaphore available (can be taken) = safe to move; semaphore taken (unavailable) = emergency stop active
 extern SemaphoreHandle_t xSafetySemaphore;

@@ -79,7 +79,7 @@ uint8_t receiverMAC[] = {0x00, 0x4B, 0x12, 0x34, 0xF7, 0xF4};
 
 The sender uses:
 - **Baud Rate**: 115200 (fixed in code)
-- **Port**: Configured in PC hand tracker (`Hand_Tracking/constant.py`)
+- **Port**: Configured in PC hand tracker (`../Hand_Tracking/constant.py`)
 
 ## Upload Instructions
 
@@ -94,7 +94,7 @@ The sender uses:
 ### Using PlatformIO
 
 ```bash
-cd Transmission/Sender_Code
+cd pc_side/Sender_Code
 pio run -t upload
 ```
 
