@@ -34,15 +34,8 @@
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
-void task_sensor_fusion(void *pvParameters);
 void task_safety_monitor(void *pvParameters);
-void task_telemetry(void *pvParameters);
 void task_autonomous(void *pvParameters);
-
-// Test function (forward declaration)
-void test_command_reception();
-void test_motor_led_actuation();
-void task_test_commands(void *pvParameters);
 
 // Global motor driver instance
 MotorDriver motor_driver;
@@ -50,11 +43,8 @@ MotorDriver motor_driver;
 // Task handles for suspending/resuming tasks
 TaskHandle_t taskHandle_safety = NULL;
 TaskHandle_t taskHandle_motor = NULL;
-TaskHandle_t taskHandle_sensor = NULL;
 TaskHandle_t taskHandle_comm = NULL;
-TaskHandle_t taskHandle_telemetry = NULL;
 TaskHandle_t taskHandle_autonomous = NULL;
-TaskHandle_t taskHandle_test = NULL;
 
 // Global flag to signal tasks that setup is complete
 volatile bool setupComplete = false;
@@ -67,14 +57,8 @@ void setup() {
     Serial.println("\n========================================");
     Serial.println("Gesture Car - ESP32 Vehicle Controller");
     Serial.println("Phase 1: Infrastructure Setup");
-    #if SIMULATION_MODE
-    Serial.println(">>> RUNNING IN SIMULATION MODE <<<");
-    Serial.println(">>> TEST MODE ENABLED <<<");
-    #else
     Serial.println(">>> RUNNING IN NORMAL MODE <<<");
     Serial.println(">>> PRODUCTION MODE <<<");
-    #endif
-
     
     Serial.println("[SETUP] Initializing WiFi and ESP-NOW...");
     WiFi.mode(WIFI_STA);
@@ -90,11 +74,10 @@ void setup() {
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     Serial.println(macStr);
     
-    // Initialize ESP-NOW (honor SIMULATION_MODE flag)
-    if (espnow_init(SIMULATION_MODE)) {
+    // Initialize ESP-NOW
+    if (espnow_init(false)) {
         Serial.println("[SETUP] ESP-NOW initialized successfully");
         
-        #if !SIMULATION_MODE
         // Wait for connection from sender before continuing
         Serial.println("[SETUP] Waiting for ESP-NOW connection from sender...");
         if (!espnow_wait_for_connection(ESP_NOW_CONNECTION_TIMEOUT_MS)) {
@@ -103,9 +86,6 @@ void setup() {
             while (1) delay(1000);  // Halt on error
         }
         Serial.println("[SETUP] ✓ ESP-NOW connection established");
-        #else
-        Serial.println("[SETUP] SIMULATION MODE - skipping connection wait");
-        #endif
     } else {
         Serial.println("[ERROR] ESP-NOW initialization failed!");
         while (1) delay(1000);  // Halt on error
@@ -174,18 +154,7 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: MotorControl (Priority 4)");
     
-    // Task 3: Sensor Fusion (Priority 3)
-    xTaskCreate(
-        task_sensor_fusion,
-        "SensorFusion",
-        TASK_STACK_SIZE_SENSOR_FUSION,
-        NULL,
-        TASK_PRIORITY_SENSOR_FUSION,
-        &taskHandle_sensor
-    );
-    Serial.println("[SETUP] Created task: SensorFusion (Priority 3)");
-    
-    // Task 4: Autonomous (Priority 3)
+    // Task 3: Autonomous (Priority 3)
     xTaskCreate(
         task_autonomous,
         "Autonomous",
@@ -196,8 +165,7 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: Autonomous (Priority 3)");
     
-    #if !SIMULATION_MODE
-    // Task 5: Communication (Priority 2) - Only in normal mode
+    // Task 5: Communication (Priority 2)
     xTaskCreate(
         task_communication,
         "Communication",
@@ -207,33 +175,6 @@ void setup() {
         &taskHandle_comm
     );
     Serial.println("[SETUP] Created task: Communication (Priority 2)");
-    #else
-    Serial.println("[SETUP] Communication task disabled in SIMULATION_MODE");
-    #endif
-    
-    // Task 5: Telemetry (Lowest Priority - 1)
-    xTaskCreate(
-        task_telemetry,
-        "Telemetry",
-        TASK_STACK_SIZE_TELEMETRY,
-        NULL,
-        TASK_PRIORITY_TELEMETRY,
-        &taskHandle_telemetry
-    );
-    Serial.println("[SETUP] Created task: Telemetry (Priority 1)");
-    
-    #if SIMULATION_MODE
-    // Task 7: Test Commands (Priority 1) - Only in simulation mode
-    xTaskCreate(
-        task_test_commands,
-        "TestCommands",
-        4096,
-        NULL,
-        1,  // Same as telemetry - will run after 2 second delay
-        &taskHandle_test
-    );
-    Serial.println("[SETUP] Created task: TestCommands (Priority 1) - SIMULATION MODE");
-    #endif
     
     Serial.println("========================================");
     Serial.println("[SETUP] All tasks created successfully!");
@@ -261,67 +202,4 @@ void loop() {
     // low-priority background tasks
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-}
-
-// ============================================================================
-// TEST TASK: Command Reception Testing
-// ============================================================================
-
-void task_test_commands(void *pvParameters) {
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    test_motor_led_actuation();
-    vTaskDelete(NULL);
-}
-
-
-// ============================================================================
-// TEST SUITE: Command Queue Communication Test
-// ============================================================================
-
-void test_motor_led_actuation() {
-    Serial.println("[TEST] Starting command queue test");
-    
-    struct CommandTest {
-        uint8_t cmd_byte;
-        const char* cmd_name;
-    };
-    
-    CommandTest tests[] = {
-        {CMD_STOP, "STOP"},
-        {CMD_FORWARD, "FORWARD"},
-        {CMD_BACKWARD, "BACKWARD"},
-        {CMD_SIDEWAY_LEFT, "SIDEWAY_LEFT"},
-        {CMD_SIDEWAY_RIGHT, "SIDEWAY_RIGHT"},
-        {CMD_ROTATE_CW, "ROTATE_CW"},
-        {CMD_ROTATE_CCW, "ROTATE_CCW"},
-        {CMD_DIAGONAL_315, "DIAGONAL_315"},
-        {CMD_DIAGONAL_45, "DIAGONAL_45"},
-        {CMD_DIAGONAL_225, "DIAGONAL_225"},
-        {CMD_DIAGONAL_135, "DIAGONAL_135"},
-        {CMD_PIVOT_LEFT, "PIVOT_LEFT"},
-        {CMD_PIVOT_RIGHT, "PIVOT_RIGHT"}
-    };
-    
-    int num_tests = sizeof(tests) / sizeof(tests[0]);
-    int passed = 0;
-    
-    for (int i = 0; i < num_tests; i++) {
-        if (xQueueSend(xCommandQueue, &tests[i].cmd_byte, pdMS_TO_TICKS(100)) == pdPASS) {
-            Serial.print(".");
-            passed++;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        
-        if (i < num_tests - 1) {
-            uint8_t stop_cmd = CMD_STOP;
-            xQueueSend(xCommandQueue, &stop_cmd, pdMS_TO_TICKS(100));
-            vTaskDelay(pdMS_TO_TICKS(500));
-        }
-    }
-    
-    Serial.println();
-    Serial.print("[TEST] Commands sent: ");
-    Serial.print(passed);
-    Serial.print("/");
-    Serial.println(num_tests);
 }
