@@ -31,6 +31,7 @@
 // Control
 #include "control/mode_manager.h"
 
+
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
@@ -165,6 +166,17 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: Autonomous (Priority 3)");
     
+    // Initialize ModeManager and confirm default mode
+    ModeManager& mode_mgr = ModeManager::getInstance();
+    Serial.print("[SETUP] Initial driving mode: ");
+    Serial.println(mode_mgr.isManualMode() ? "MANUAL" : "AUTONOMOUS");
+    
+    // Suspend autonomous task since default mode is MANUAL
+    if (taskHandle_autonomous != NULL) {
+        vTaskSuspend(taskHandle_autonomous);
+        Serial.println("[SETUP] Autonomous task suspended (default mode: MANUAL)");
+    }
+    
     // Task 5: Communication (Priority 2)
     xTaskCreate(
         task_communication,
@@ -200,6 +212,6 @@ void loop() {
     // This delay ensures loop() doesn't consume CPU
     // In production, you might remove loop() entirely or use it for
     // low-priority background tasks
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(50));
     
 }

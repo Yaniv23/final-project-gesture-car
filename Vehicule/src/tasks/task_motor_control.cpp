@@ -20,6 +20,9 @@ extern MotorDriver motor_driver;
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
 
+// External task handle for autonomous task (defined in main.cpp)
+extern TaskHandle_t taskHandle_autonomous;
+
 void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
@@ -46,23 +49,52 @@ void task_motor_control(void *pvParameters) {
             
             // Handle mode control commands first
             if (cmd_byte == CMD_MODE_MANUAL) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_MANUAL);
                 motion_stop();  // Stop motors when changing mode
-                Serial.println("[MOTOR] Mode: MANUAL");
+                
+                // Suspend autonomous task when switching to manual mode
+                if (taskHandle_autonomous != NULL && old_mode != MODE_MANUAL) {
+                    vTaskSuspend(taskHandle_autonomous);
+                    Serial.println("[MOTOR] Mode: MANUAL - Autonomous task suspended");
+                } else {
+                    Serial.println("[MOTOR] Mode: MANUAL");
+                }
                 last_logged_cmd = cmd_byte;
                 continue;
             } else if (cmd_byte == CMD_MODE_AUTONOMOUS) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_AUTONOMOUS);
                 motion_stop();  // Stop motors when changing mode
-                Serial.println("[MOTOR] Mode: AUTONOMOUS");
+                
+                // Resume autonomous task when switching to autonomous mode
+                if (taskHandle_autonomous != NULL && old_mode != MODE_AUTONOMOUS) {
+                    vTaskResume(taskHandle_autonomous);
+                    Serial.println("[MOTOR] Mode: AUTONOMOUS - Autonomous task resumed");
+                } else {
+                    Serial.println("[MOTOR] Mode: AUTONOMOUS");
+                }
                 last_logged_cmd = cmd_byte;
                 continue;
             } else if (cmd_byte == CMD_MODE_TOGGLE) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 DrivingMode new_mode = mode_mgr.isManualMode() ? MODE_AUTONOMOUS : MODE_MANUAL;
                 mode_mgr.setMode(new_mode);
                 motion_stop();  // Stop motors when changing mode
-                Serial.print("[MOTOR] Mode: ");
-                Serial.println(new_mode == MODE_MANUAL ? "MANUAL" : "AUTONOMOUS");
+                
+                // Suspend or resume autonomous task based on new mode
+                if (taskHandle_autonomous != NULL) {
+                    if (new_mode == MODE_MANUAL) {
+                        vTaskSuspend(taskHandle_autonomous);
+                        Serial.println("[MOTOR] Mode: MANUAL (toggled) - Autonomous task suspended");
+                    } else {
+                        vTaskResume(taskHandle_autonomous);
+                        Serial.println("[MOTOR] Mode: AUTONOMOUS (toggled) - Autonomous task resumed");
+                    }
+                } else {
+                    Serial.print("[MOTOR] Mode: ");
+                    Serial.println(new_mode == MODE_MANUAL ? "MANUAL" : "AUTONOMOUS");
+                }
                 last_logged_cmd = cmd_byte;
                 continue;
             }

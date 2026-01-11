@@ -117,13 +117,20 @@ void task_autonomous(void *pvParameters) {
         }
         
         // Main navigation loop - simple orchestration
-        if (sensors_initialized && nav_state_machine != nullptr) {
+        // Double-check mode before sending commands (safety measure)
+        if (sensors_initialized && nav_state_machine != nullptr && mode_mgr.isAutonomousMode()) {
             // Update navigation state machine
             uint8_t command = nav_state_machine->update();
             
-            // Send command to motor control queue
-            if (xQueueSend(xCommandQueue, &command, 0) != pdTRUE) {
-                Serial.println("[AUTO] Warning: Command queue full!");
+            // Final check: ensure we're still in autonomous mode before sending command
+            if (mode_mgr.isAutonomousMode()) {
+                // Send command to motor control queue
+                if (xQueueSend(xCommandQueue, &command, 0) != pdTRUE) {
+                    Serial.println("[AUTO] Warning: Command queue full!");
+                }
+            } else {
+                // Mode changed during execution - stop immediately
+                Serial.println("[AUTO] Mode changed to MANUAL during execution - stopping");
             }
         }
         
