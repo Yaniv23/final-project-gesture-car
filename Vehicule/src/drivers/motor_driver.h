@@ -5,7 +5,7 @@
 #include "../config.h"
 
 /**
- * @brief Motor driver for L298N using ESP32 LEDC and GPIO directly
+ * @brief Motor driver for TB6612 using ESP32 LEDC and GPIO directly
  * @details Controls 4 motors (FL, FR, BL, BR) using ESP32 APIs
  *          Each motor has its own enable pin for independent speed control
  */

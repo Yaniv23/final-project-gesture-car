@@ -683,7 +683,7 @@ graph TB
         VehicleController["Vehicle Controller"]
         CommandQueue["Command Queue<br/>(FreeRTOS)"]
         MotorTask["Motor Control Task"]
-        MotorDrivers["Motor Drivers<br/>(L298N)"]
+        MotorDrivers["Motor Drivers<br/>(TB6612)"]
         MotorsHW["4x DC Motors"]
         
         VehicleController -->|"Enqueue"| CommandQueue

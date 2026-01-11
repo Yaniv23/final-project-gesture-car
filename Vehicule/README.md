@@ -1,127 +1,303 @@
 # ESP32 Vehicle Controller
 
-Advanced FreeRTOS-based control system for gesture-controlled mecanum wheel robot. This ESP32-based controller receives wireless commands via ESP-NOW and controls 4 motors, a servo, and an ultrasonic sensor.
+Advanced FreeRTOS-based control system for gesture-controlled mecanum wheel robot. This ESP32-based controller receives wireless commands via ESP-NOW and controls 4 motors, a servo motor, and an ultrasonic sensor for autonomous navigation.
 
-## Architecture Overview
 
-The vehicle controller uses **FreeRTOS** (Real-Time Operating System) to manage multiple tasks simultaneously:
+## 📋 Key Features
 
-- **Safety Monitor** (Priority 5) - Highest priority, monitors for obstacles and emergencies
-- **Motor Control** (Priority 4) - Real-time motor control at 100Hz
-- **Sensor Fusion** (Priority 3) - Reads ultrasonic sensor and servo control
-- **Communication** (Priority 2) - Handles ESP-NOW command reception
-- **Telemetry** (Priority 1) - Status reporting and debugging
+- **🔄 FreeRTOS Multi-Tasking**: 4 concurrent tasks with priority-based scheduling
+- **🛡️ Safety Systems**: Watchdog timer, emergency stop, timeout monitoring
+- **🚗 Mecanum Drive**: Full omnidirectional movement (forward, backward, strafe, rotate, diagonal)
+- **🤖 Autonomous Mode**: Obstacle avoidance with ultrasonic sensor and servo scanning
+- **📡 ESP-NOW Communication**: Low-latency wireless command reception (< 20ms)
+- **⚡ Real-Time Control**: 100Hz motor control (10ms period) for smooth operation
 
-### Key Features
+## 🏗️ Architecture Overview
 
-- **Multi-task Architecture**: FreeRTOS tasks for concurrent operations
-- **Safety Systems**: Watchdog, emergency stop, timeout monitoring
-- **Mecanum Drive**: Full omnidirectional movement (forward, backward, strafe, rotate, diagonal)
-- **Obstacle Detection**: Ultrasonic sensor with automatic emergency stop
-- **Binary Protocol**: Efficient single-byte command protocol over ESP-NOW
+### What is FreeRTOS?
 
-## Hardware Connections
+**FreeRTOS** (Free Real-Time Operating System) allows the ESP32 to run multiple tasks at the same time. Each task is a separate function that runs independently.
 
-### Motor Connections
+**How it works**:
+- Each task has a priority level (0 to 25, where higher numbers mean more important)
+- The system checks which task should run thousands of times per second
+- If a high-priority task needs to run, it can interrupt a lower-priority task immediately
+- Tasks of the same priority take turns running
+- Each task can pause itself to let other tasks run
 
-The vehicle uses **4 DC motors** with **2 L298N motor driver modules**. All motors share a **common PWM pin** for speed control.
+**In this system**:
+- **Motor Control (Priority 4)**: Runs every 10ms to update motor speeds. This ensures smooth movement.
+- **Autonomous (Priority 3)**: Runs every 50ms when in autonomous mode to plan navigation and avoid obstacles.
+- **Communication (Priority 2)**: Runs every 100ms to check for new commands from the ESP32 sender.
 
-#### Common PWM Pin
-- **Pin 2**: Connected to all motor drivers' ENA pins (controls speed for all motors)
+The system switches between tasks so quickly that they appear to run simultaneously, but the ESP32 actually runs them one at a time, switching very rapidly between them.
 
-#### Front Right Motor (L298N Driver #1)
-- **IN1**: GPIO 5
-- **IN2**: GPIO 32
-- **ENA**: Pin 2 (common PWM)
+### FreeRTOS Task Architecture
 
-#### Front Left Motor (L298N Driver #1)
-- **IN3**: GPIO 33
-- **IN4**: GPIO 25
-- **ENA**: Pin 2 (common PWM)
-
-#### Back Right Motor (L298N Driver #2)
-- **IN1**: GPIO 27
-- **IN2**: GPIO 14
-- **ENA**: Pin 2 (common PWM)
-
-#### Back Left Motor (L298N Driver #2)
-- **IN3**: GPIO 12
-- **IN4**: GPIO 13
-- **ENA**: Pin 2 (common PWM)
-
-### Sensor Connections
-
-- **Servo Motor**: GPIO 4 (for obstacle scanning)
-- **Ultrasonic Sensor**:
-  - **TRIG**: GPIO 18
-  - **ECHO**: GPIO 16
-
-### Power Supply
-
-- **ESP32**: USB or external 5V supply
-- **Motors**: Separate power supply (e.g., 7.4V battery pack) connected to L298N drivers
-- **Common Ground**: Ensure all grounds are connected together
-
-> **Important**: GPIO pins 34, 35, 36, 39 are INPUT-ONLY on ESP32 and cannot be used for PWM output. The configuration uses valid PWM-capable pins.
-
-## Building and Uploading
-
-### Prerequisites
-
-- **PlatformIO**: Install with `pip install platformio`
-- **USB Cable**: For connecting ESP32 to PC
-- **Serial Port**: Identify your ESP32's COM port
-
-### Build Instructions
-
-```bash
-cd Vehicule
-
-# Build the project
-pio run
-
-# Build and upload to ESP32
-pio run -t upload
-
-# Monitor serial output (115200 baud)
-pio device monitor
+```mermaid
+graph TB
+    subgraph VehicleController["🚗 ESP32 Vehicle Controller (FreeRTOS)"]
+        subgraph HighPriority["🔴 High Priority Tasks (Critical)"]
+            MotorControl["Motor Control<br/>Priority 4 | 10ms<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• Command processing<br/>• Mode switching<br/>• Motion execution<br/>• PWM control<br/><br/>Runs 100 times per second"]
+        end
+        
+        subgraph MediumPriority["🟡 Medium Priority Tasks"]
+            Autonomous["Autonomous Mode<br/>Priority 3 | 50ms<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• Navigation logic<br/>• Obstacle avoidance<br/>• Path planning<br/>• Stuck detection<br/><br/>Runs 20 times per second"]
+            Communication["Communication<br/>Priority 2 | 100ms<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• ESP-NOW reception<br/>• Protocol parsing<br/>• Queue management<br/><br/>Runs 10 times per second"]
+        end
+        
+        subgraph SharedResources["📦 Shared Resources"]
+            CommandQueue["Command Queue<br/>(FreeRTOS Queue)<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>Stores commands from<br/>ESP-NOW for processing"]
+            ModeManager["Mode Manager<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>MANUAL / AUTONOMOUS<br/>mode switching"]
+            MotorDriver["Motor Driver<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>Controls 4 motors<br/>via PWM signals"]
+        end
+        
+        subgraph Hardware["⚙️ Hardware"]
+            Motors["4x DC Motors<br/>(Mecanum Wheels)"]
+            Servo["Servo Motor<br/>(Scanning)"]
+            Ultrasonic["Ultrasonic Sensor<br/>(HC-SR04)"]
+        end
+    end
+    
+    ESPNOW["ESP-NOW<br/>Wireless<br/>Commands"]
+    
+    ESPNOW -->|Receives| Communication
+    Communication -->|Enqueues| CommandQueue
+    CommandQueue -->|Dequeues| MotorControl
+    CommandQueue -->|Dequeues| Autonomous
+    ModeManager -->|Controls| MotorControl
+    ModeManager -->|Controls| Autonomous
+    MotorControl -->|Commands| MotorDriver
+    Autonomous -->|Commands| CommandQueue
+    MotorDriver -->|PWM Signals| Motors
+    Autonomous -->|Position| Servo
+    Autonomous -->|Read Distance| Ultrasonic
+    
+    classDef highPriority fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
+    classDef mediumPriority fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    classDef shared fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    classDef hardware fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
+    classDef comm fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:#000
+    
+    class MotorControl highPriority
+    class Autonomous,Communication mediumPriority
+    class CommandQueue,ModeManager,MotorDriver shared
+    class Motors,Servo,Ultrasonic hardware
+    class ESPNOW comm
 ```
 
-### Port Configuration
+### Command Processing Flow
 
-Edit `platformio.ini` to set your upload port:
-
-```ini
-upload_port = /dev/ttyUSB0  # Linux
-# upload_port = COM3        # Windows
-# upload_port = /dev/cu.usbserial-*  # macOS
+```mermaid
+sequenceDiagram
+    participant Sender as ESP32 Sender<br/>(PC Bridge)
+    participant ESPNOW as ESP-NOW<br/>Wireless
+    participant CommTask as Communication Task<br/>(Priority 2)
+    participant Queue as Command Queue<br/>(FreeRTOS Queue)
+    participant MotorTask as Motor Control Task<br/>(Priority 4)
+    participant Motors as Motor Driver<br/>(4 Motors)
+    
+    Note over Sender,Motors: Command Flow: ESP-NOW → Motors
+    
+    Sender->>ESPNOW: Send binary command<br/>(e.g., 0x01 = FORWARD)
+    ESPNOW->>CommTask: Interrupt: Command received<br/>(ISR handler)
+    CommTask->>CommTask: Parse command byte<br/>(Validate protocol)
+    CommTask->>Queue: Enqueue command<br/>(xQueueSend)
+    
+    Note over MotorTask: Motor Control Task runs<br/>every 10ms (100Hz)
+    
+    MotorTask->>Queue: Dequeue command<br/>(xQueueReceive)
+    Queue-->>MotorTask: Return command byte
+    MotorTask->>MotorTask: Check mode<br/>(MANUAL/AUTONOMOUS)
+    MotorTask->>MotorTask: Execute motion function<br/>(e.g., motion_forward)
+    MotorTask->>Motors: Set PWM signals<br/>(Speed + Direction)
+    Motors->>Motors: Move vehicle
 ```
 
-Or specify at upload time:
-```bash
-pio run -t upload --upload-port /dev/ttyUSB0
+### Hardware Connection Diagram
+
+```mermaid
+graph TB
+    subgraph ESP32["ESP32 Development Board"]
+        ESP32MCU["ESP32<br/>Microcontroller"]
+    end
+    
+    subgraph MotorDrivers["Motor Drivers (2x TB6612)"]
+        Driver1["TB6612 Driver #1<br/>━━━━━━━━━━━━━━━━<br/>Channel A: Back Right<br/>Channel B: Back Left"]
+        Driver2["TB6612 Driver #2<br/>━━━━━━━━━━━━━━━━<br/>Channel C: Front Right<br/>Channel D: Front Left"]
+    end
+    
+    subgraph Motors["4x DC Motors"]
+        FR["Front Right<br/>Motor"]
+        FL["Front Left<br/>Motor"]
+        BR["Back Right<br/>Motor"]
+        BL["Back Left<br/>Motor"]
+    end
+    
+    subgraph Sensors["Sensors"]
+        Servo["Servo Motor<br/>(SG90)"]
+        Ultrasonic["Ultrasonic<br/>(HC-SR04)"]
+    end
+    
+    ESP32MCU -->|GPIO 27 EN, 25 IN1, 26 IN2| Driver2
+    ESP32MCU -->|GPIO 19 EN, 5 IN1, 18 IN2| Driver1
+    ESP32MCU -->|GPIO 23 EN, 21 IN1, 22 IN2| Driver1
+    ESP32MCU -->|GPIO 14 EN, 32 IN1, 33 IN2| Driver2
+    ESP32MCU -->|GPIO 4| Servo
+    ESP32MCU -->|GPIO 12 TRIG, 16 ECHO| Ultrasonic
+    
+    Driver1 --> BR
+    Driver1 --> BL
+    Driver2 --> FR
+    Driver2 --> FL
+    
+    classDef esp32 fill:#00C853,stroke:#007E33,stroke-width:3px,color:#fff
+    classDef driver fill:#FF6F00,stroke:#E65100,stroke-width:2px,color:#fff
+    classDef motor fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    classDef sensor fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
+    
+    class ESP32MCU esp32
+    class Driver1,Driver2 driver
+    class FR,FL,BR,BL motor
+    class Servo,Ultrasonic sensor
 ```
 
-## Configuration
+## 🎮 Operating Modes
+
+The vehicle controller supports two operating modes: **Manual Mode** and **Autonomous Mode**. You can switch between them using gesture commands or mode control commands.
+
+### Manual Mode
+
+**Default Mode**: The vehicle starts in Manual Mode.
+
+**How it works**:
+- Vehicle responds directly to commands received via ESP-NOW
+- Commands come from the PC hand tracker through the ESP32 sender
+- Each gesture translates to a movement command (forward, backward, strafe, rotate, etc.)
+- Vehicle executes commands immediately as they are received
+- No obstacle avoidance - user has full control
+
+**Use cases**:
+- Precise control for specific movements
+- Testing and debugging
+- Manual navigation in controlled environments
+
+**Switching to Manual Mode**:
+- Send `MODE_MANUAL` command (0x20) via ESP-NOW
+- Or use gesture: 3 fingers held for ~0.5 seconds (mode toggle)
+
+### Autonomous Mode
+
+**How it works**:
+- Vehicle navigates independently using sensors
+- Autonomous task runs every 50ms to plan navigation
+- Uses ultrasonic sensor and servo motor to scan for obstacles
+- Automatically avoids obstacles and navigates around them
+- Makes decisions based on 3-direction scanning (left, center, right)
+- Can detect when stuck and perform recovery maneuvers
+
+**Features**:
+- **Obstacle Detection**: Scans environment using servo-mounted ultrasonic sensor
+- **Path Planning**: Chooses best direction based on scan results
+- **Stuck Detection**: Detects when vehicle cannot move and performs recovery
+- **Continuous Scanning**: Periodically rescans environment while moving forward
+
+**Use cases**:
+- Hands-free operation
+- Exploration of unknown environments
+- Obstacle avoidance demonstrations
+
+**Switching to Autonomous Mode**:
+- Send `MODE_AUTONOMOUS` command (0x21) via ESP-NOW
+- Or use gesture: 3 fingers held for ~0.5 seconds (mode toggle)
+
+### Mode Switching
+
+```mermaid
+stateDiagram-v2
+    [*] --> MANUAL: Startup<br/>(Default Mode)
+    
+    MANUAL --> AUTONOMOUS: MODE_TOGGLE Command<br/>(0x22) or<br/>3 Fingers Gesture
+    AUTONOMOUS --> MANUAL: MODE_TOGGLE Command<br/>(0x22) or<br/>3 Fingers Gesture
+    
+    MANUAL --> MANUAL: MODE_MANUAL Command<br/>(0x20)
+    AUTONOMOUS --> AUTONOMOUS: MODE_AUTONOMOUS Command<br/>(0x21)
+    
+    state MANUAL {
+        [*] --> WaitingCommand
+        WaitingCommand --> ProcessingCommand: ESP-NOW Command
+        ProcessingCommand --> ExecutingMotion: Valid Command
+        ExecutingMotion --> WaitingCommand: Complete
+    }
+    
+    state AUTONOMOUS {
+        [*] --> Forward
+        Forward --> Scan: Obstacle Detected
+        Scan --> Decision: 3-Direction Scan
+        Decision --> Action: Choose Direction
+        Action --> Forward: Move Complete
+        Action --> BackingUp: All Blocked
+        BackingUp --> Scan: Backup Complete
+        Forward --> StuckPivoting: Stuck Detected
+        StuckPivoting --> Scan: Pivot Complete
+    }
+```
+
+### Mode Control Commands
+
+| Command | Byte | Description |
+|---------|------|-------------|
+| MODE_MANUAL | 0x20 | Switch to manual mode |
+| MODE_AUTONOMOUS | 0x21 | Switch to autonomous mode |
+| MODE_TOGGLE | 0x22 | Toggle between manual and autonomous |
+
+**Note**: When switching modes, the vehicle automatically stops all motors to ensure safe transitions.
+
+### Mode Behavior Comparison
+
+| Feature | Manual Mode | Autonomous Mode |
+|---------|-------------|-----------------|
+| **Command Source** | ESP-NOW (from PC) | Autonomous task (internal) |
+| **Control** | User via gestures | Automatic navigation |
+| **Obstacle Avoidance** | None | Active (ultrasonic + servo) |
+| **Sensor Usage** | Not used | Ultrasonic sensor + servo scanning |
+| **Task Activity** | Motor Control + Communication | Motor Control + Communication + Autonomous |
+| **Use Case** | Precise control | Hands-free navigation |
+
+## ⚙️ Configuration
 
 ### Pin Assignments
 
 All pin definitions are in `src/config.h`. Key constants:
 
 ```cpp
-// Common PWM pin for all motors
-#define MOTOR_PWM_COMMON   2
+// Front Right Motor (Driver #2, Channel C)
+#define FRONT_RIGHT_EN     27  // PWM pin (independent)
+#define FRONT_RIGHT_IN1     25  // Direction pin 1
+#define FRONT_RIGHT_IN2     26  // Direction pin 2
 
-// Motor direction pins
-#define FRONT_RIGHT_IN1    5
-#define FRONT_RIGHT_IN2    32
-// ... (see config.h for complete list)
+// Back Right Motor (Driver #1, Channel A)
+#define BACK_RIGHT_EN      19  // PWM pin (independent)
+#define BACK_RIGHT_IN1      5   // Direction pin 1
+#define BACK_RIGHT_IN2     18   // Direction pin 2
+
+// Front Left Motor (Driver #2, Channel D)
+#define FRONT_LEFT_EN      14  // PWM pin (independent)
+#define FRONT_LEFT_IN1     32   // Direction pin 1
+#define FRONT_LEFT_IN2     33   // Direction pin 2
+
+// Back Left Motor (Driver #1, Channel B)
+#define BACK_LEFT_EN       23  // PWM pin (independent)
+#define BACK_LEFT_IN1      21   // Direction pin 1
+#define BACK_LEFT_IN2      22   // Direction pin 2
 
 // Sensors
-#define SERVO_PIN          4
-#define ULTRASONIC_TRIG    18
-#define ULTRASONIC_ECHO    16
+#define SERVO_PIN           4   // Servo motor
+#define ULTRASONIC_TRIG     12  // Ultrasonic trigger
+#define ULTRASONIC_ECHO     16  // Ultrasonic echo
 ```
+
+**Note**: Each motor has its own independent PWM pin (EN pin) for individual speed control. This allows for precise differential control of each wheel.
 
 ### Motor Speed Settings
 
@@ -131,6 +307,8 @@ Adjust motor speeds in `src/config.h`:
 #define MOTOR_SPEED_SLOW   150  // Slow speed (0-255)
 #define MOTOR_SPEED_FAST   255  // Fast speed (0-255)
 ```
+
+**Speed Range**: 0-255 (0 = stopped, 255 = maximum speed)
 
 ### Safety Thresholds
 
@@ -147,226 +325,59 @@ Configure safety parameters:
 Task priorities and periods (in `src/config.h`):
 
 ```cpp
-// Task Priorities (higher = more important)
-#define TASK_PRIORITY_SAFETY_MONITOR    5
-#define TASK_PRIORITY_MOTOR_CONTROL     4
-#define TASK_PRIORITY_SENSOR_FUSION     3
-#define TASK_PRIORITY_COMMUNICATION     2
-#define TASK_PRIORITY_TELEMETRY         1
+// Task Priorities (higher number = higher priority)
+#define TASK_PRIORITY_MOTOR_CONTROL     4  // High - real-time control
+#define TASK_PRIORITY_AUTONOMOUS        3  // Medium - navigation
+#define TASK_PRIORITY_COMMUNICATION     2  // Medium - command handling
 
-// Task Periods (milliseconds)
-#define TASK_PERIOD_MOTOR_CONTROL      10   // 100 Hz
-#define TASK_PERIOD_SENSOR_FUSION      50   // 20 Hz
-#define TASK_PERIOD_COMMUNICATION     100   // 10 Hz
+// Task Periods (milliseconds) - how often task runs
+#define TASK_PERIOD_MOTOR_CONTROL      10   // 100 Hz (10ms)
+#define TASK_PERIOD_AUTONOMOUS         50   // 20 Hz (50ms)
+#define TASK_PERIOD_COMMUNICATION     100   // 10 Hz (100ms)
 ```
 
-## ESP-NOW Setup
+**Understanding Task Priorities**:
+- **Priority 4 (Motor)**: Highest priority - runs frequently (100Hz) for smooth control
+- **Priority 3 (Autonomous)**: Medium priority - runs when in autonomous mode
+- **Priority 2 (Communication)**: Medium priority - runs when commands arrive
 
-### Getting the MAC Address
 
-1. Upload the code to your ESP32
-2. Open Serial Monitor (115200 baud)
-3. Look for output like:
-   ```
-   [COMM] ESP-NOW initialized
-   [COMM] MAC Address: XX:XX:XX:XX:XX:XX
-   ```
-4. **Copy this MAC address** - you'll need it for the sender ESP32
+## 💡 Tips for Junior Developers
 
-### Pairing with Sender
+### Understanding FreeRTOS
 
-The sender ESP32 needs to know the vehicle controller's MAC address. See [Sender Documentation](../pc_side/Sender_Code/README.md) for configuration.
+**Think of FreeRTOS like a restaurant**:
+- **Tasks** = Workers (each has a specific job)
+- **Priority** = Importance (higher priority workers get attention first)
+- **Queue** = Order board (tasks communicate via queues)
+- **Scheduler** = Manager (decides which worker does what, when)
 
-## Serial Monitor Usage
+### Common Concepts
 
-### Startup Output
+- **PWM (Pulse Width Modulation)**: A way to control motor speed by rapidly turning power on/off
+- **ESP-NOW**: A fast wireless protocol for ESP32 devices (like Bluetooth but faster and simpler)
+- **Queue**: A data structure where tasks can put messages for other tasks to read
+- **Interrupt**: An event that immediately pauses current work to handle something urgent
 
-When the vehicle controller starts, you should see:
+### Debugging Tips
 
-```
-========================================
-Gesture Car - ESP32 Vehicle Controller
-Phase 1: Infrastructure Setup
-========================================
-FreeRTOS Version: 10.4.3
-CPU Frequency: 240 MHz
-Free Heap: 250000 bytes
-========================================
+1. **Always check Serial Monitor first** - it shows what's happening
+2. **Start simple** - test one motor, then one task, then combine
+3. **Check connections** - most issues are wiring problems
+4. **Use print statements** - Add `Serial.println()` to see code execution flow
+5. **Monitor free heap** - Low memory can cause crashes
 
-[SETUP] Initializing shared queues...
-[SETUP] Shared queues initialized
-[SETUP] Initializing MotorDriver...
-[SETUP] MotorDriver initialized (common PWM on pin 2)
-[SETUP] Safety systems initialized
-[SETUP] Creating FreeRTOS tasks...
-[SETUP] Created task: SafetyMonitor (Priority 5)
-[SETUP] Created task: MotorControl (Priority 4)
-[SETUP] Created task: SensorFusion (Priority 3)
-[SETUP] Created task: Communication (Priority 2)
-[SETUP] Created task: Telemetry (Priority 1)
-[SETUP] All tasks created successfully!
-[SETUP] System ready - FreeRTOS scheduler starting...
-```
+### Reading the Code
 
-### Command Reception
+1. **Start with `main.cpp`** - This is where everything begins
+2. **Look at `config.h`** - All settings are here
+3. **Check task files** - Each task is in `tasks/task_*.cpp`
+4. **Read driver files** - These control the hardware directly
 
-When commands are received via ESP-NOW:
+## 📚 Related Documentation
 
-```
-[COMM] Received command byte: 0x01
-[MOTOR] FORWARD
-```
+- **[Main Project README](../README.md)** - Complete system overview
+- **[PC-Side Components](../pc_side/README.md)** - PC-side components documentation
+- **[Vehicle Controller Technical Details](../docs/VEHICLE_CONTROLLER.md)** - Deep technical reference
+- **[Architecture Documentation](../docs/architecture.md)** - System architecture details
 
-### Emergency Stop
-
-If obstacle detected:
-
-```
-⚠️ Object detected close!
-[MOTOR] EMERGENCY STOP
-```
-
-## Testing
-
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for comprehensive testing procedures.
-
-### Quick Test
-
-1. **Elevate vehicle** (wheels off ground) for safety
-2. **Upload code** and open Serial Monitor
-3. **Note MAC address** from Serial Monitor
-4. **Send test commands** via ESP-NOW sender
-5. **Verify motors respond** correctly
-
-### Command Byte Reference
-
-| Command | Byte | Description |
-|---------|------|-------------|
-| STOP | 0x00 | All motors stop |
-| FORWARD | 0x01 | Move forward |
-| BACKWARD | 0x02 | Move backward |
-| STRAFE_LEFT | 0x03 | Strafe left |
-| STRAFE_RIGHT | 0x04 | Strafe right |
-| ROTATE_CW | 0x05 | Rotate clockwise |
-| ROTATE_CCW | 0x06 | Rotate counter-clockwise |
-| DIAGONAL_FORWARD_LEFT | 0x07 | Diagonal forward-left |
-| DIAGONAL_FORWARD_RIGHT | 0x08 | Diagonal forward-right |
-| DIAGONAL_BACKWARD_LEFT | 0x09 | Diagonal backward-left |
-| DIAGONAL_BACKWARD_RIGHT | 0x0A | Diagonal backward-right |
-| PIVOT_LEFT | 0x0B | Pivot left |
-| PIVOT_RIGHT | 0x0C | Pivot right |
-
-## Troubleshooting
-
-### Motors Don't Move
-
-**Check:**
-- Common PWM pin (pin 2) connected to all motor drivers' ENA pins
-- Motor driver power supply is adequate
-- Direction pins connected correctly
-- Serial Monitor for error messages
-
-**Solution:**
-- Verify pin connections match `config.h`
-- Check motor driver power supply voltage
-- Test with Serial Monitor to see if commands are received
-
-### Wrong Movement Direction
-
-**Check:**
-- IN1/IN2 pins swapped in motor configuration
-- Motor wiring matches pin assignments
-
-**Solution:**
-- Swap direction pins in `config.h` or physically swap motor wires
-
-### ESP-NOW Not Receiving Commands
-
-**Check:**
-- MAC address printed in Serial Monitor
-- Sender ESP32 configured with correct MAC address
-- Both ESP32s powered on
-- ESP-NOW channel matches (default: 0)
-
-**Solution:**
-- Verify MAC address in sender code matches vehicle controller MAC
-- Check Serial Monitor shows ESP-NOW initialization success
-
-### Emergency Stop Always Active
-
-**Check:**
-- Ultrasonic sensor reading (should be > 10cm normally)
-- `EMERGENCY_STOP_DISTANCE_CM` in `config.h`
-
-**Solution:**
-- Check ultrasonic sensor connections (TRIG/ECHO pins)
-- Increase distance threshold if sensor is too sensitive
-- Verify sensor is not blocked or damaged
-
-### Vehicle Moves Too Fast/Slow
-
-**Solution:**
-- Adjust `MOTOR_SPEED_SLOW` and `MOTOR_SPEED_FAST` in `config.h`
-- Range: 0-255 (lower = slower)
-- Rebuild and upload after changes
-
-## Code Structure
-
-```
-Vehicule/
-├── src/
-│   ├── main.cpp                 # Entry point, FreeRTOS initialization
-│   ├── config.h                 # Pin definitions, constants
-│   ├── drivers/                 # Hardware drivers
-│   │   ├── motor_driver.h/cpp   # Motor control
-│   │   ├── servo_driver.h/cpp   # Servo control
-│   │   └── ultrasonic_driver.h/cpp  # Distance sensor
-│   ├── communication/          # Communication protocols
-│   │   ├── command_protocol.h   # Command byte definitions
-│   │   └── espnow_handler.h/cpp # ESP-NOW implementation
-│   ├── control/                 # Control algorithms
-│   │   └── motion_control.h/cpp # Movement control logic
-│   ├── safety/                  # Safety systems
-│   │   ├── watchdog.h/cpp       # Watchdog timer
-│   │   ├── timeout_monitor.h/cpp # Command timeout
-│   │   └── emergency_stop.h/cpp # Emergency stop
-│   ├── tasks/                   # FreeRTOS tasks
-│   │   ├── task_motor_control.cpp
-│   │   ├── task_communication.cpp
-│   │   ├── task_sensor_fusion.cpp
-│   │   ├── task_safety_monitor.cpp
-│   │   └── task_telemetry.cpp
-│   └── shared/                  # Shared resources
-│       ├── types.h              # Common data structures
-│       └── queues.h/cpp         # FreeRTOS queues
-├── platformio.ini               # Build configuration
-├── README.md                    # This file
-└── TESTING_GUIDE.md            # Testing procedures
-```
-
-## Technical Documentation
-
-For detailed technical information, see:
-- [Vehicle Controller Technical Details](../docs/VEHICLE_CONTROLLER.md) - Architecture, protocols, API
-
-## Development Status
-
-- [x] FreeRTOS task structure
-- [x] Motor driver implementation
-- [x] ESP-NOW communication
-- [x] Safety systems (watchdog, emergency stop, timeout)
-- [x] Binary command protocol
-- [x] Sensor integration (ultrasonic, servo)
-- [x] Motion control (all movement types)
-
-## Next Steps
-
-- Fine-tune PID controllers (if velocity feedback added)
-- Add encoder support for closed-loop control
-- Implement sensor fusion (IMU integration)
-- Add telemetry reporting
-- Optimize power consumption
-
----
-
-**For questions or issues, check the troubleshooting section or review the technical documentation.**
