@@ -216,7 +216,7 @@ stateDiagram-v2
 #### 2. ESP32 Vehicle Controller
 - **Board**: ESP32 development board
 - **Motors**: 4x DC motors with mecanum wheels
-- **Motor Drivers**: 2x L298N motor driver modules
+- **Motor Drivers**: 2x TB6612 motor driver modules
 - **Power Supply**: 7.4V battery pack (for motors)
 - **Servo Motor**: SG90 or similar (for obstacle scanning)
 - **Ultrasonic Sensor**: HC-SR04
@@ -229,7 +229,7 @@ stateDiagram-v2
 ### Power Supply
 
 - **ESP32 Controllers**: USB power or external 5V supply
-- **Motors**: Separate 7.4V battery pack connected to L298N drivers
+- **Motors**: Separate 7.4V battery pack connected to TB6612 drivers
 - **Common Ground**: All grounds must be connected together
 
 ## 📦 Software Installation
