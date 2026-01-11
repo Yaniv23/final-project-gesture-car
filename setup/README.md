@@ -60,7 +60,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 1. Copy and paste the commands below, updating the path to match your machine:
 
 ```bash
-cd /path/to/final-project-gesture-car/Hand_Tracking
+cd /path/to/final-project-gesture-car/pc_side/Hand_Tracking
 source venv/bin/activate
 python Hand_Tracker.py
 ```
@@ -73,7 +73,7 @@ python Hand_Tracker.py
 1. Copy and paste the commands below, updating the path to match your machine:
 
 ```powershell
-cd "C:\path\to\final-project-gesture-car\Hand_Tracking"
+cd "C:\path\to\final-project-gesture-car\pc_side\Hand_Tracking"
 ```
 
 ```powershell
@@ -92,7 +92,7 @@ python Hand_Tracker.py
 If you want to control the car:
 
 1. Connect your ESP32 to the computer via USB
-2. Open `Hand_Tracker.py` or `constant.py` in a text editor
+2. Open `pc_side/Hand_Tracking/Hand_Tracker.py` or `pc_side/Hand_Tracking/constant.py` in a text editor
 3. Update the serial port (see below how to find it)
 
 ### How to Find Your Serial Port
@@ -109,7 +109,7 @@ Common ports are:
 - Linux: `/dev/ttyUSB0`, `/dev/ttyACM0`
 - macOS: `/dev/tty.usbserial-*`, `/dev/tty.usbmodem*`
 
-Update the port in `Hand_Tracker.py` or `constant.py` (e.g., change `'COM11'` to `'/dev/ttyUSB0'`).
+Update the port in `pc_side/Hand_Tracking/Hand_Tracker.py` or `pc_side/Hand_Tracking/constant.py` (e.g., change `'COM11'` to `'/dev/ttyUSB0'`).
 
 **Windows:**
 
@@ -145,7 +145,7 @@ Look for a port like COM3, COM4, COM5, etc. Use that number in the script.
 **Linux/macOS - To start the hand tracker, always run these 3 commands (with your path):**
 
 ```bash
-cd /path/to/final-project-gesture-car/Hand_Tracking
+cd /path/to/final-project-gesture-car/pc_side/Hand_Tracking
 source venv/bin/activate
 python Hand_Tracker.py
 ```
@@ -153,7 +153,7 @@ python Hand_Tracker.py
 **Windows - To start the hand tracker, always run these 3 commands (with your path):**
 
 ```powershell
-cd "C:\path\to\final-project-gesture-car\Hand_Tracking"
+cd "C:\path\to\final-project-gesture-car\pc_side\Hand_Tracking"
 .\venv\Scripts\Activate.ps1
 python Hand_Tracker.py
 ```

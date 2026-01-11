@@ -115,10 +115,10 @@ if (-not $scriptFullPath) {
 
 $scriptPath = Split-Path -Parent $scriptFullPath
 $projectRoot = Split-Path -Parent $scriptPath
-$handTrackingDir = Join-Path $projectRoot "Hand_Tracking"
+$handTrackingDir = Join-Path $projectRoot "pc_side\Hand_Tracking"
 
 if (-not (Test-Path $handTrackingDir)) {
-    Write-Host "[ERROR] Directory 'Hand_Tracking' not found!" -ForegroundColor Red
+    Write-Host "[ERROR] Directory 'pc_side\Hand_Tracking' not found!" -ForegroundColor Red
     exit 1
 }
 
@@ -194,7 +194,7 @@ Write-Host "Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To use the project:" -ForegroundColor Yellow
-Write-Host "  1. Activate: cd Hand_Tracking && .\venv\Scripts\Activate.ps1" -ForegroundColor White
+Write-Host "  1. Activate: cd pc_side\Hand_Tracking && .\venv\Scripts\Activate.ps1" -ForegroundColor White
 Write-Host "  2. Run: python Hand_Tracker.py" -ForegroundColor White
-Write-Host "  3. Update COM port in Hand_Tracking/constant.py if needed" -ForegroundColor White
+Write-Host "  3. Update COM port in pc_side\Hand_Tracking\constant.py if needed" -ForegroundColor White
 Write-Host ""

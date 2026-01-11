@@ -25,9 +25,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Activate virtual environment if it exists
-if [ -d "$PROJECT_ROOT/Hand_Tracking/venv" ]; then
+if [ -d "$PROJECT_ROOT/pc_side/Hand_Tracking/venv" ]; then
     echo "Activating virtual environment..."
-    source "$PROJECT_ROOT/Hand_Tracking/venv/bin/activate"
+    source "$PROJECT_ROOT/pc_side/Hand_Tracking/venv/bin/activate"
 fi
 
 # Change to project root
@@ -62,7 +62,7 @@ sleep 2
 echo "Starting hand tracking..."
 echo "Press 'q' in the hand tracking window to quit"
 echo ""
-python "$PROJECT_ROOT/Hand_Tracking/Hand_Tracker.py"
+python "$PROJECT_ROOT/pc_side/Hand_Tracking/Hand_Tracker.py"
 
 echo ""
 echo "Shutting down..."
