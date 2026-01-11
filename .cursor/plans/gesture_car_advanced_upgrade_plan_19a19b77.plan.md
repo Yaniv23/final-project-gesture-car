@@ -449,7 +449,7 @@ ObstacleMap fuseSensors(ultrasonic_data, imu_data, vision_data);
 - Temporal filtering (moving average)
 - Fallback to "Stop" if confidence < threshold
 
-**File:** `Hand_Tracking/Hand_Tracker.py` (enhance existing)**Engineering Value:**
+**File:** `pc_side/Hand_Tracking/Hand_Tracker.py` (enhance existing)**Engineering Value:**
 
 - Demonstrates robustness in perception systems
 - Shows handling of uncertain inputs
