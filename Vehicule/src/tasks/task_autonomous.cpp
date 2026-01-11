@@ -59,6 +59,34 @@ enum NavigationState {
     STATE_STOPPED           // Stopped (safety)
 };
 
+// Stratégies de récupération
+enum RecoveryStrategy {
+    RECOVERY_BACKUP_TURN,      // Reculer puis tourner aléatoirement
+    RECOVERY_PIVOT_360,        // Rotation complète 360°
+    RECOVERY_BACKUP_LONG,      // Recul long
+    RECOVERY_RANDOM_TURN,      // Tourner aléatoirement avec angle variable
+    RECOVERY_WALL_FOLLOW       // Essayer suivi de mur (simplifié: scan seulement)
+};
+
+// Historique de positions pour détection mouvement réel
+struct PositionHistory {
+    float distances[5];           // Historique des 5 dernières distances
+    unsigned long timestamps[5];  // Timestamps correspondants
+    int index;                    // Index circulaire (0-4)
+    bool is_moving;               // Flag: robot bouge-t-il réellement?
+};
+
+static PositionHistory position_history;
+
+// Mémoire de récupération
+struct RecoveryMemory {
+    int attempt_count;                    // Nombre de tentatives de récupération
+    RecoveryStrategy last_strategy;       // Dernière stratégie utilisée
+    unsigned long last_recovery_time;     // Timestamp dernière récupération
+};
+
+static RecoveryMemory recovery_memory;
+
 /**
  * @brief Mesure distance filtrée (moyenne de plusieurs échantillons)
  * @param ultrasonic_sensor Référence au capteur
@@ -221,32 +249,236 @@ static void updateStuckMemory(float current_distance, bool is_moving) {
 
 
 /**
- * @brief Détecte si le robot est coincé (amélioration)
- * @param consecutive_stuck_count Compteur de tentatives échouées (référence)
- * @return true si bloqué, false sinon
+ * @brief Met à jour l'historique de positions pour détecter mouvement réel
+ * @param current_distance Distance actuelle mesurée
+ * @details Calcule variance des 5 dernières distances pour déterminer si robot bouge
  */
-static bool checkIfStuckImproved(int& consecutive_stuck_count) {
+static void updatePositionHistory(float current_distance) {
+    unsigned long now = millis();
+    
+    // Ajouter nouvelle mesure (FIFO circulaire)
+    position_history.index = (position_history.index + 1) % 5;
+    position_history.distances[position_history.index] = current_distance;
+    position_history.timestamps[position_history.index] = now;
+    
+    // Calculer moyenne des distances
+    float mean = 0.0f;
+    int valid_count = 0;
+    for (int i = 0; i < 5; i++) {
+        if (position_history.distances[i] > 0) {
+            mean += position_history.distances[i];
+            valid_count++;
+        }
+    }
+    
+    if (valid_count == 0) {
+        position_history.is_moving = false;
+        return;
+    }
+    
+    mean /= valid_count;
+    
+    // Calculer variance
+    float variance = 0.0f;
+    for (int i = 0; i < 5; i++) {
+        if (position_history.distances[i] > 0) {
+            float diff = position_history.distances[i] - mean;
+            variance += diff * diff;
+        }
+    }
+    variance /= valid_count;
+    
+    // Si variance faible = pas de mouvement (robot probablement bloqué)
+    // Si variance élevée = mouvement détecté (robot avance)
+    position_history.is_moving = (variance > POSITION_VARIANCE_THRESHOLD);
+}
+
+/**
+ * @brief Détecte si le robot est coincé (version améliorée)
+ * @return true si bloqué, false sinon
+ * @details Combine vérification distances ET mouvement réel
+ */
+static bool checkIfStuckAdvanced() {
     if (!STUCK_DETECTION_ENABLED) {
         return false;
     }
     
-    // Si toutes les directions sont bloquées
+    // Vérifier 1: Toutes directions bloquées (logique existante améliorée)
     if (last_scan.is_valid) {
         if (last_scan.distance_left < MIN_FREE_SPACE_CM &&
             last_scan.distance_front < MIN_FREE_SPACE_CM &&
             last_scan.distance_right < MIN_FREE_SPACE_CM) {
-            consecutive_stuck_count++;
+            stuck_memory.consecutive_stuck_count++;
             
-            if (consecutive_stuck_count >= STUCK_BACKUP_COUNT) {
+            if (stuck_memory.consecutive_stuck_count >= STUCK_BACKUP_COUNT) {
                 return true;
             }
         } else {
-            consecutive_stuck_count = 0; // Reset si chemin trouvé
+            // Au moins une direction libre - reset compteur
+            stuck_memory.consecutive_stuck_count = 0;
         }
     }
     
-    return false;
+    // Vérifier 2: Pas de mouvement réel malgré commande FORWARD
+    // Cette vérification sera faite dans STATE_FORWARD où on a accès à la commande
+    
+    // Combiner les deux vérifications
+    return (stuck_memory.consecutive_stuck_count >= STUCK_BACKUP_COUNT);
 }
+
+/**
+ * @brief Choisit une stratégie de récupération (avec variation)
+ * @param attempt_number Numéro de tentative (pour varier stratégies)
+ * @return Stratégie choisie
+ * @details Varie stratégie selon numéro de tentative pour éviter boucles
+ */
+static RecoveryStrategy chooseRecoveryStrategy(int attempt_number) {
+    RecoveryStrategy strategies[] = {
+        RECOVERY_BACKUP_TURN,
+        RECOVERY_PIVOT_360,
+        RECOVERY_BACKUP_LONG,
+        RECOVERY_RANDOM_TURN,
+        RECOVERY_WALL_FOLLOW
+    };
+    
+    // Varier stratégie selon numéro de tentative (modulo pour éviter répétition)
+    int index = (attempt_number % 5);
+    return strategies[index];
+}
+
+/**
+ * @brief Exécute une stratégie de récupération (non-bloquante)
+ * @param strategy Stratégie à exécuter
+ * @param command Commande à envoyer (sortie)
+ * @param recovery_start_ms Timestamp de début de récupération (référence pour modification)
+ * @param recovery_step Étape actuelle de la stratégie (0=init, 1=backup, 2=turn, etc.)
+ * @return true si stratégie complète, false sinon
+ * @details Implémente 5 stratégies différentes pour éviter boucles
+ */
+static bool executeRecoveryStrategy(RecoveryStrategy strategy, uint8_t& command, 
+                                     unsigned long& recovery_start_ms, int& recovery_step) {
+    unsigned long now = millis();
+    static uint8_t recovery_cmd = CMD_STOP;
+    static uint32_t random_turn_duration = 0;
+    static unsigned long phase_start_ms = 0;
+    
+    switch (strategy) {
+        case RECOVERY_BACKUP_TURN: {
+            if (recovery_step == 0) {
+                Serial.println("[AUTO] Recovery: BACKUP_TURN");
+                recovery_cmd = CMD_BACKWARD;
+                command = recovery_cmd;
+                recovery_step = 1;
+                phase_start_ms = now;
+            } else if (recovery_step == 1) {
+                // Backup phase
+                if (now - phase_start_ms < BACKUP_TIME_MS) {
+                    command = recovery_cmd;
+                } else {
+                    // Backup complete - start turn
+                    recovery_cmd = (random(0, 2) == 0) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+                    command = recovery_cmd;
+                    phase_start_ms = now; // Reset timer for turn
+                    recovery_step = 2;
+                }
+            } else if (recovery_step == 2) {
+                // Turn phase
+                if (now - phase_start_ms < TURN_DURATION_MS) {
+                    command = recovery_cmd;
+                } else {
+                    // Turn complete
+                    command = CMD_STOP;
+                    recovery_memory.last_strategy = strategy;
+                    recovery_memory.last_recovery_time = now;
+                    return true;
+                }
+            }
+            break;
+        }
+        
+        case RECOVERY_PIVOT_360: {
+            if (recovery_step == 0) {
+                Serial.println("[AUTO] Recovery: PIVOT_360");
+                recovery_cmd = CMD_ROTATE_CW;
+                command = recovery_cmd;
+                recovery_step = 1;
+                phase_start_ms = now;
+            } else if (recovery_step == 1) {
+                // 360° rotation (4 × 90°)
+                if (now - phase_start_ms < TURN_DURATION_MS * 4) {
+                    command = recovery_cmd;
+                } else {
+                    command = CMD_STOP;
+                    recovery_memory.last_strategy = strategy;
+                    recovery_memory.last_recovery_time = now;
+                    return true;
+                }
+            }
+            break;
+        }
+        
+        case RECOVERY_BACKUP_LONG: {
+            if (recovery_step == 0) {
+                Serial.println("[AUTO] Recovery: BACKUP_LONG");
+                recovery_cmd = CMD_BACKWARD;
+                command = recovery_cmd;
+                recovery_step = 1;
+                phase_start_ms = now;
+            } else if (recovery_step == 1) {
+                // Long backup
+                if (now - phase_start_ms < STUCK_BACKUP_DURATION_MS) {
+                    command = recovery_cmd;
+                } else {
+                    command = CMD_STOP;
+                    recovery_memory.last_strategy = strategy;
+                    recovery_memory.last_recovery_time = now;
+                    return true;
+                }
+            }
+            break;
+        }
+        
+        case RECOVERY_RANDOM_TURN: {
+            if (recovery_step == 0) {
+                Serial.println("[AUTO] Recovery: RANDOM_TURN");
+                recovery_cmd = (random(0, 2) == 0) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+                command = recovery_cmd;
+                // Angle aléatoire entre 90° et 270°
+                random_turn_duration = TURN_DURATION_MS + random(0, TURN_DURATION_MS * 2);
+                recovery_step = 1;
+                phase_start_ms = now;
+            } else if (recovery_step == 1) {
+                // Random turn
+                if (now - phase_start_ms < random_turn_duration) {
+                    command = recovery_cmd;
+                } else {
+                    command = CMD_STOP;
+                    recovery_memory.last_strategy = strategy;
+                    recovery_memory.last_recovery_time = now;
+                    return true;
+                }
+            }
+            break;
+        }
+        
+        case RECOVERY_WALL_FOLLOW: {
+            if (recovery_step == 0) {
+                Serial.println("[AUTO] Recovery: WALL_FOLLOW (scan only)");
+                // Simplifié: juste scanner pour trouver mur
+                // Peut être étendu plus tard avec suivi de mur complet
+                scan3Directions(ultrasonic_sensor, servo, last_scan);
+                recovery_memory.last_strategy = strategy;
+                recovery_memory.last_recovery_time = now;
+                recovery_step = 1;
+                return true; // Scan is immediate
+            }
+            break;
+        }
+    }
+    
+    return false; // Strategy not complete yet
+}
+
 /**
  * @brief Safe backup function - recule de manière sécurisée
  * @details Inspirée de la fonction safeBackup() du code de référence Obstacle_Avoidance_Bot
@@ -329,6 +561,19 @@ void task_autonomous(void *pvParameters) {
     // Initialize stuck memory
     resetStuckMemory();
     
+    // Initialiser historique de positions
+    for (int i = 0; i < 5; i++) {
+        position_history.distances[i] = 0.0f;
+        position_history.timestamps[i] = 0;
+    }
+    position_history.index = 0;
+    position_history.is_moving = false;
+    
+    // Initialiser mémoire de récupération
+    recovery_memory.attempt_count = 0;
+    recovery_memory.last_strategy = RECOVERY_BACKUP_TURN;
+    recovery_memory.last_recovery_time = 0;
+    
     while (1) {
         // Check if we're in autonomous mode
         if (!mode_mgr.isAutonomousMode()) {
@@ -360,6 +605,17 @@ void task_autonomous(void *pvParameters) {
                 nav_state = STATE_FORWARD;
                 // Reset stuck memory
                 resetStuckMemory();
+                // Reset position history
+                for (int i = 0; i < 5; i++) {
+                    position_history.distances[i] = 0.0f;
+                    position_history.timestamps[i] = 0;
+                }
+                position_history.index = 0;
+                position_history.is_moving = false;
+                // Reset recovery memory
+                recovery_memory.attempt_count = 0;
+                recovery_memory.last_strategy = RECOVERY_BACKUP_TURN;
+                recovery_memory.last_recovery_time = 0;
                 // Reset timing variables
                 turn_duration_ms = 0;
                 last_command = CMD_STOP;
@@ -382,6 +638,10 @@ void task_autonomous(void *pvParameters) {
                 // Measure distance only in front
                 unsigned long now = millis();
                 
+                // Track last sent command for stuck detection
+                static uint8_t last_sent_command = CMD_STOP;
+                static unsigned long last_forward_command_time = 0;
+                
                 // Ensure servo is at center position
                 servo.setAngle(SCAN_CENTER_ANGLE);
                 servo.stopSweep();
@@ -389,6 +649,11 @@ void task_autonomous(void *pvParameters) {
                 // Measure distance only if servo has stabilized
                 if (now - last_servo_update_ms >= SERVO_STABILIZATION_MS) {
                     float distance = filteredDistance(ultrasonic_sensor, FILTER_SAMPLES);
+                    
+                    // Mettre à jour historique de positions pour détection mouvement
+                    if (distance >= 0.0f && distance <= 400.0f) {
+                        updatePositionHistory(distance);
+                    }
                     
                     // Check for obstacle ahead
                     if (distance >= 0.0f && distance < CRITICAL_DISTANCE_CM) {
@@ -398,23 +663,54 @@ void task_autonomous(void *pvParameters) {
                         Serial.print("[AUTO] Obstacle detected at ");
                         Serial.print(distance);
                         Serial.println(" cm - triggering scan");
+                        last_sent_command = CMD_STOP;
                         break;
                     }
                     
                     last_servo_update_ms = now;
                 }
                 
-                // Check if stuck using improved detection
-                if (checkIfStuckImproved(stuck_memory.consecutive_stuck_count)) {
+                // Vérifier mouvement réel si commande FORWARD active depuis X ms
+                if (last_sent_command == CMD_FORWARD) {
+                    if (now - last_forward_command_time > STUCK_MOVEMENT_CHECK_MS) {
+                        if (!position_history.is_moving) {
+                            stuck_memory.consecutive_failed_attempts++;
+                            Serial.print("[AUTO] No movement detected - attempts: ");
+                            Serial.println(stuck_memory.consecutive_failed_attempts);
+                            
+                            if (stuck_memory.consecutive_failed_attempts >= STUCK_THRESHOLD_ATTEMPTS) {
+                                Serial.println("[AUTO] Stuck detected: no movement despite FORWARD command");
+                                nav_state = STATE_STUCK_PIVOTING;
+                                command = CMD_STOP;
+                                last_sent_command = CMD_STOP;
+                                stuck_memory.consecutive_failed_attempts = 0;
+                                break;
+                            }
+                        } else {
+                            // Mouvement détecté - reset compteur
+                            stuck_memory.consecutive_failed_attempts = 0;
+                        }
+                    }
+                }
+                
+                // Check if stuck using advanced detection
+                if (checkIfStuckAdvanced()) {
                     // Vehicle is stuck - enter stuck pivoting state
                     nav_state = STATE_STUCK_PIVOTING;
                     command = CMD_STOP;
+                    last_sent_command = CMD_STOP;
                     Serial.println("[AUTO] Stuck detected - entering pivot mode");
                     break;
                 }
                 
                 // Path is clear - continue forward
                 command = CMD_FORWARD;
+                if (command == CMD_FORWARD) {
+                    last_sent_command = CMD_FORWARD;
+                    last_forward_command_time = now;
+                } else {
+                    last_sent_command = command;
+                }
                 break;
             }
             
@@ -574,16 +870,59 @@ void task_autonomous(void *pvParameters) {
                             Serial.println("[AUTO] U-turn complete");
                         }
                     } else if (action_direction == 0 || action_direction == 1) {
-                        // Turning left or right
-                        if (now - action_start_ms < TURN_DURATION_MS) {
-                            command = executeMovement(action_direction, TURN_DURATION_MS);
+                        // Turning left or right - utiliser tournant adaptatif
+                        static bool adaptive_turn_initiated = false;
+                        static unsigned long adaptive_turn_start_ms = 0;
+                        static unsigned long last_check_ms = 0;
+                        static uint8_t adaptive_turn_cmd = CMD_STOP;
+                        
+                        if (!adaptive_turn_initiated) {
+                            // Démarrer tournant adaptatif
+                            adaptive_turn_cmd = (action_direction == 0) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+                            command = adaptive_turn_cmd;
+                            adaptive_turn_initiated = true;
+                            adaptive_turn_start_ms = now;
+                            last_check_ms = now;
+                            Serial.println("[AUTO] Starting adaptive turn");
                         } else {
-                            // Turn complete
-                            command = CMD_STOP;
-                            action_initiated = false;
-                            action_direction = -1;
-                            nav_state = STATE_FORWARD;
-                            Serial.println("[AUTO] Turn complete");
+                            // Vérifier périodiquement si chemin clair pendant rotation
+                            if (now - last_check_ms >= ADAPTIVE_TURN_CHECK_INTERVAL_MS) {
+                                last_check_ms = now;
+                                
+                                // Mesurer distance devant pendant rotation (servo au centre)
+                                servo.setAngle(SCAN_CENTER_ANGLE);
+                                // Pas de delay ici - on attendra au prochain cycle
+                                
+                                // Mesure rapide (3 échantillons au lieu de 5 pour réduire latence)
+                                float distance = filteredDistance(ultrasonic_sensor, 3);
+                                
+                                // Si chemin clair trouvé, arrêter rotation immédiatement
+                                if (distance >= MIN_FREE_SPACE_CM && distance > 0) {
+                                    command = CMD_STOP;
+                                    adaptive_turn_initiated = false;
+                                    action_initiated = false;
+                                    action_direction = -1;
+                                    nav_state = STATE_FORWARD;
+                                    Serial.print("[AUTO] Adaptive turn: path clear at ");
+                                    Serial.print(distance);
+                                    Serial.println(" cm");
+                                    break;
+                                }
+                            }
+                            
+                            // Vérifier timeout
+                            if (now - adaptive_turn_start_ms >= ADAPTIVE_TURN_MAX_DURATION_MS) {
+                                // Timeout - arrêter rotation (safety)
+                                command = CMD_STOP;
+                                adaptive_turn_initiated = false;
+                                action_initiated = false;
+                                action_direction = -1;
+                                nav_state = STATE_FORWARD;
+                                Serial.println("[AUTO] Adaptive turn timeout - continuing forward");
+                            } else {
+                                // Continuer rotation
+                                command = adaptive_turn_cmd;
+                            }
                         }
                     } else {
                         // Forward - just continue briefly then return to FORWARD
@@ -642,47 +981,49 @@ void task_autonomous(void *pvParameters) {
             
             case STATE_STUCK_PIVOTING: {
                 // Pivot on place to find a clear path
-                // Use triggered scan to find clear direction
-                command = CMD_PIVOT_LEFT;  // Default pivot direction
+                // Utiliser stratégies de récupération multiples
+                command = CMD_STOP;
                 
-                static uint32_t pivot_duration_ms = 0;
-                static bool scan_triggered = false;
-                pivot_duration_ms += AUTONOMOUS_TASK_PERIOD_MS;
+                static bool recovery_initiated = false;
+                static unsigned long recovery_start_ms = 0;
+                static int recovery_step = 0;
+                static RecoveryStrategy current_strategy = RECOVERY_BACKUP_TURN;
+                unsigned long now = millis();
                 
-                // Trigger scan periodically during pivot
-                if (!scan_triggered && pivot_duration_ms >= 500) {
-                    // Trigger a scan to find clear path
+                if (!recovery_initiated) {
+                    // Choisir et démarrer stratégie de récupération
+                    current_strategy = chooseRecoveryStrategy(recovery_memory.attempt_count);
+                    recovery_initiated = true;
+                    recovery_start_ms = now;
+                    recovery_step = 0;
+                    recovery_memory.attempt_count++;
+                    
+                    Serial.print("[AUTO] Recovery attempt #");
+                    Serial.println(recovery_memory.attempt_count);
+                }
+                
+                // Exécuter stratégie (non-bloquante)
+                bool strategy_complete = executeRecoveryStrategy(current_strategy, command, 
+                                                                 recovery_start_ms, recovery_step);
+                
+                if (strategy_complete) {
+                    // Stratégie complète - scanner pour trouver chemin
                     nav_state = STATE_SCAN;
-                    scan_triggered = true;
-                    pivot_duration_ms = 0;
-                    Serial.println("[AUTO] Triggering scan during pivot");
+                    recovery_initiated = false;
+                    recovery_step = 0;
+                    Serial.println("[AUTO] Recovery complete - scanning for clear path");
                     break;
                 }
                 
-                // Check scan result if available
-                if (last_scan.is_valid) {
-                    // Check if any direction is clear
-                    if (last_scan.distance_left > MIN_FREE_SPACE_CM ||
-                        last_scan.distance_front > MIN_FREE_SPACE_CM ||
-                        last_scan.distance_right > MIN_FREE_SPACE_CM) {
-                        // Clear path found - use ACTION state to move
-                        int direction = decideDirection(last_scan);
-                        nav_state = STATE_ACTION;
-                        scan_triggered = false;
-                        pivot_duration_ms = 0;
-                        resetStuckMemory();
-                        Serial.println("[AUTO] Path found - exiting stuck state");
-                        break;
-                    }
+                // Si trop de tentatives, essayer backup long et reset
+                if (recovery_memory.attempt_count >= RECOVERY_MAX_ATTEMPTS) {
+                    Serial.println("[AUTO] Max recovery attempts reached - trying long backup");
+                    current_strategy = RECOVERY_BACKUP_LONG;
+                    recovery_step = 0;
+                    recovery_start_ms = now;
+                    recovery_memory.attempt_count = 0; // Reset pour prochaine fois
                 }
                 
-                if (pivot_duration_ms >= STUCK_PIVOT_MAX_DURATION_MS) {
-                    // Max pivot duration reached - try backing up
-                    nav_state = STATE_BACKING_UP;
-                    pivot_duration_ms = 0;
-                    scan_triggered = false;
-                    Serial.println("[AUTO] Still stuck after pivot - trying backup");
-                }
                 break;
             }
             

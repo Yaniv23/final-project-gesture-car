@@ -109,8 +109,8 @@
 #define AUTONOMOUS_TASK_STACK_SIZE   4096
 
 // Navigation parameters
-#define OBSTACLE_DISTANCE_THRESHOLD_CM  20  // Distance minimale avant obstacle
-#define SAFE_DISTANCE_CM                30  // Distance de sécurité
+#define OBSTACLE_DISTANCE_THRESHOLD_CM  25  // Distance minimale avant obstacle
+#define SAFE_DISTANCE_CM                40  // Distance de sécurité
 #define TURN_DURATION_MS                450  // Durée de rotation (réduit de 1000ms pour plus de fluidité)
 #define AUTONOMOUS_FORWARD_SPEED       200  // Vitesse avant en mode autonome
 #define AUTONOMOUS_TURN_SPEED          150  // Vitesse de rotation
@@ -119,7 +119,7 @@
 #define BACKUP_TIME_MS                400   // Durée de recul après détection d'obstacle
 #define ULTRASONIC_TIMEOUT_US         30000 // Timeout pour pulseIn (30ms)
 #define FORWARD_CHECK_PERIOD_MS       50    // Vérification distance pendant forward (chaque cycle)
-#define PERIODIC_RESCAN_MS           500   // Rescan périodique (réduit de 2000ms)
+#define PERIODIC_RESCAN_MS           200   // Rescan périodique (réduit de 2000ms)
 #define SERVO_MOVE_DELAY_MS          100   // Délai servo réduit (de 150ms) pour scanning plus rapide
 
 // Continuous Scanning Configuration
@@ -149,8 +149,8 @@
 #define SCAN_RIGHT_ANGLE       135  // Angle droite pour scan
 
 // Distances seuils
-#define CRITICAL_DISTANCE_CM   18   // Distance critique pour déclencher scan
-#define MIN_FREE_SPACE_CM      25   // Espace minimum pour choisir une direction
+#define CRITICAL_DISTANCE_CM   25   // Distance critique pour déclencher scan
+#define MIN_FREE_SPACE_CM      30   // Espace minimum pour choisir une direction
 
 // Timing servo
 #define SERVO_STABILIZATION_MS 200  // Délai stabilisation servo avant mesure
@@ -162,6 +162,17 @@
 // Détection blocage améliorée
 #define STUCK_BACKUP_COUNT     3    // Nombre de tentatives avant backup long
 #define STUCK_BACKUP_DURATION_MS 1000  // Durée backup long si bloqué
+
+// Tournant adaptatif
+#define ADAPTIVE_TURN_MAX_DURATION_MS  2000  // Durée max rotation (safety)
+#define ADAPTIVE_TURN_CHECK_INTERVAL_MS 50   // Intervalle vérification pendant rotation
+
+// Détection de blocage améliorée
+#define POSITION_VARIANCE_THRESHOLD     5.0f  // Variance min pour considérer mouvement (cm²)
+#define STUCK_MOVEMENT_CHECK_MS        2000   // Vérifier mouvement après X ms
+
+// Stratégies de récupération
+#define RECOVERY_MAX_ATTEMPTS           5     // Nombre max de tentatives avant état spécial
 
 #endif // CONFIG_H
 
