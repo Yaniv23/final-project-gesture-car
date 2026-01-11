@@ -139,12 +139,12 @@ graph TB
         Ultrasonic["Ultrasonic<br/>(HC-SR04)"]
     end
     
-    ESP32MCU -->|GPIO 27, 25, 26| Driver2
-    ESP32MCU -->|GPIO 19, 5, 18| Driver1
-    ESP32MCU -->|GPIO 23, 21, 22| Driver1
-    ESP32MCU -->|GPIO 14, 32, 33| Driver2
+    ESP32MCU -->|GPIO 27 EN, 25 IN1, 26 IN2| Driver2
+    ESP32MCU -->|GPIO 19 EN, 5 IN1, 18 IN2| Driver1
+    ESP32MCU -->|GPIO 23 EN, 21 IN1, 22 IN2| Driver1
+    ESP32MCU -->|GPIO 14 EN, 32 IN1, 33 IN2| Driver2
     ESP32MCU -->|GPIO 4| Servo
-    ESP32MCU -->|GPIO 18, 16| Ultrasonic
+    ESP32MCU -->|GPIO 12 TRIG, 16 ECHO| Ultrasonic
     
     Driver1 --> BR
     Driver1 --> BL
@@ -271,16 +271,33 @@ stateDiagram-v2
 All pin definitions are in `src/config.h`. Key constants:
 
 ```cpp
-// Front Right Motor
-#define FRONT_RIGHT_EN     27  // PWM pin
+// Front Right Motor (Driver #2, Channel C)
+#define FRONT_RIGHT_EN     27  // PWM pin (independent)
 #define FRONT_RIGHT_IN1     25  // Direction pin 1
 #define FRONT_RIGHT_IN2     26  // Direction pin 2
+
+// Back Right Motor (Driver #1, Channel A)
+#define BACK_RIGHT_EN      19  // PWM pin (independent)
+#define BACK_RIGHT_IN1      5   // Direction pin 1
+#define BACK_RIGHT_IN2     18   // Direction pin 2
+
+// Front Left Motor (Driver #2, Channel D)
+#define FRONT_LEFT_EN      14  // PWM pin (independent)
+#define FRONT_LEFT_IN1     32   // Direction pin 1
+#define FRONT_LEFT_IN2     33   // Direction pin 2
+
+// Back Left Motor (Driver #1, Channel B)
+#define BACK_LEFT_EN       23  // PWM pin (independent)
+#define BACK_LEFT_IN1      21   // Direction pin 1
+#define BACK_LEFT_IN2      22   // Direction pin 2
 
 // Sensors
 #define SERVO_PIN           4   // Servo motor
 #define ULTRASONIC_TRIG     12  // Ultrasonic trigger
 #define ULTRASONIC_ECHO     16  // Ultrasonic echo
 ```
+
+**Note**: Each motor has its own independent PWM pin (EN pin) for individual speed control. This allows for precise differential control of each wheel.
 
 ### Motor Speed Settings
 

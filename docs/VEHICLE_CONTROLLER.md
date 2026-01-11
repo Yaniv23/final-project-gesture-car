@@ -146,7 +146,7 @@ Text String → Command Byte Mapping:
 
 ### Motor Driver Architecture
 
-The system uses **4 DC motors** with **2 L298N motor driver modules**. All motors share a **common PWM pin** for speed control.
+The system uses **4 DC motors** with **2 TB6612 motor driver modules**. Each motor has its own independent PWM pin for speed control.
 
 #### Motor Configuration
 
@@ -154,14 +154,14 @@ The system uses **4 DC motors** with **2 L298N motor driver modules**. All motor
 struct MotorConfig {
     uint8_t in1_pin;  // Direction pin 1
     uint8_t in2_pin;  // Direction pin 2
-    // Note: PWM is common for all motors
+    // Note: Each motor has its own PWM pin (EN pin)
 };
 ```
 
 #### Motor Control Method
 
 1. **Direction Control**: Set via IN1/IN2 pins (GPIO)
-2. **Speed Control**: Common PWM pin (LEDC channel) controls all motors
+2. **Speed Control**: Each motor has its own PWM pin (LEDC channel) for independent speed control
 3. **Individual Control**: Each motor has independent direction pins
 
 ### Mecanum Wheel Kinematics
@@ -316,11 +316,11 @@ public:
     };
     
     bool init(const MotorConfig motors[4], 
-              uint8_t common_pwm_pin, 
+              uint8_t enable_pin,  // PWM pin for this motor 
               uint8_t ledc_channel);
     void setMotorSpeed(uint8_t motor_id, int16_t speed);
     void stopAll();
-    void setCommonPWM(uint16_t duty);
+    void setMotorSpeed(uint8_t motor_index, uint16_t duty);  // Set speed for individual motor
 };
 ```
 
@@ -351,7 +351,7 @@ Initialize motor driver with 4 motor configurations.
 
 **Parameters:**
 - `motors[4]`: Array of MotorConfig structures
-- `common_pwm_pin`: GPIO pin for common PWM (speed control)
+- `enable_pin`: GPIO pin for this motor's PWM (speed control) - each motor has its own independent PWM pin
 - `ledc_channel`: LEDC channel for PWM (0-15)
 
 **Returns:** `true` if successful, `false` otherwise
@@ -364,7 +364,7 @@ Set speed and direction for a specific motor.
 - `motor_id`: Motor ID (0-3)
 - `speed`: Speed from -1023 (full reverse) to +1023 (full forward), 0 = stop
 
-**Note:** Speed is relative; actual speed depends on `setCommonPWM()`
+**Note:** Speed is relative; actual speed depends on individual motor PWM settings
 
 #### `MotorDriver::stopAll()`
 
