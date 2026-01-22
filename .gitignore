@@ -253,7 +253,6 @@ secrets.json
 # BMAD and Cursor configuration files
 .bmad-core/
 .cursor/
-._bmad/
 _bmad/
 
 # PlatformIO build folders
