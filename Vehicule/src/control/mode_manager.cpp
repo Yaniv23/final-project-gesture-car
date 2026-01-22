@@ -1,4 +1,5 @@
 #include "mode_manager.h"
+#include <Arduino.h>
 
 ModeManager* ModeManager::instance_ = nullptr;
 
@@ -9,6 +10,8 @@ ModeManager::ModeManager()
         // Error handling - mutex creation failed
         // In production, this should be handled more gracefully
     }
+    // Log initial mode (will be printed when Serial is ready)
+    // Note: Serial may not be initialized yet, so we log in getInstance() instead
 }
 
 ModeManager& ModeManager::getInstance() {

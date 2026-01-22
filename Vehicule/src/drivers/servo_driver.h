@@ -31,8 +31,11 @@ public:
     /**
      * @brief Set servo to specific angle
      * @param angle Angle in degrees (0-180)
+     * @param wait_for_stable If true, wait for stabilization delay (default: false for non-blocking)
+     * @details Updates current_angle_ and sets servo position
+     *          If wait_for_stable is true, blocks until servo is stable (250ms)
      */
-    void setAngle(int angle);
+    void setAngle(int angle, bool wait_for_stable = false);
     
     /**
      * @brief Start servo sweep
@@ -67,6 +70,13 @@ public:
      */
     int getCurrentAngle() const;
     
+    /**
+     * @brief Check if servo is stable (not moving)
+     * @return true if servo has been at current angle for stabilization time
+     * @details Returns true if last angle change was more than SERVO_STABILIZATION_MS ago
+     */
+    bool isStable() const;
+    
 private:
     uint8_t pin_;
     uint8_t ledc_channel_;
@@ -83,6 +93,9 @@ private:
     bool sweeping_;
     bool sweep_resting_;
     unsigned long rest_interval_ms_;
+    
+    // Stabilization tracking
+    unsigned long last_angle_change_ms_;  // Timestamp of last angle change
     
     /**
      * @brief Convert angle (degrees) to PWM duty cycle

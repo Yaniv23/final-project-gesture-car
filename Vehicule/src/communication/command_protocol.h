@@ -51,6 +51,8 @@ enum CommandByte {
 static const uint8_t CMD_HANDSHAKE_INIT  = 0xF0;  ///< Sender → vehicle: request handshake
 static const uint8_t CMD_HANDSHAKE_ACK   = 0xF1;  ///< Vehicle → sender: acknowledge handshake
 static const uint8_t CMD_HEARTBEAT       = 0xF2;  ///< (Optional) future heartbeat/status frames
+static const uint8_t CMD_TELEMETRY       = 0xF3;  ///< Vehicle → sender: telemetry data frame
+static const uint8_t CMD_MODE_STATUS     = 0xF4;  ///< Vehicle → sender: current mode (0=manual, 1=autonomous)
 
 /**
  * @brief Validate if a command byte is valid

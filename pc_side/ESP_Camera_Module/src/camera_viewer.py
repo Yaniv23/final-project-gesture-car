@@ -16,6 +16,7 @@ PACKET_HEADER_SIZE = 8
 FRAME_TIMEOUT_SECONDS = 5.0  # Discard incomplete frames after 5 seconds (increased for unstable connections)
 STATS_INTERVAL_SECONDS = 5.0  # Print statistics every 5 seconds
 DISCOVERY_TIMEOUT = 5.0  # Timeout pour la découverte en secondes
+FRAME_DISPLAY_WAIT_MS = 30  # Wait 30ms between frame displays (matches ESP32 frame rate)
 
 
 def parse_args():
@@ -66,15 +67,21 @@ def discover_esp32(timeout=DISCOVERY_TIMEOUT, verbose=False):
             data, addr = discovery_sock.recvfrom(1024)
             response = data.decode('utf-8', errors='ignore')
             
+            esp32_ip = None
             if response.startswith("CAMERA_IP:"):
                 esp32_ip = response.split(":", 1)[1].strip()
+            elif response.startswith("ESP32-CAM:"):
+                parts = response.split(":")
+                if len(parts) >= 2:
+                    esp32_ip = parts[1].strip()
+            
+            if esp32_ip:
                 if verbose:
                     print(f"[Discovery] ESP32 found! IP: {esp32_ip} (from {addr[0]})")
                 
                 # Envoyer notre IP à l'ESP32 pour qu'il l'apprenne
                 try:
                     # Obtenir notre IP locale
-                    # Créer une connexion temporaire pour obtenir l'IP locale
                     temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     temp_sock.connect(("8.8.8.8", 80))
                     local_ip = temp_sock.getsockname()[0]
@@ -181,6 +188,10 @@ def main():
             
             frame_id, fragment_id, total_fragments = struct.unpack('<IHH', data[:PACKET_HEADER_SIZE])
             fragment_data = data[PACKET_HEADER_SIZE:]
+
+            # Ignore header-only packet (fragment_id 0xFFFF) used as frame start marker
+            if fragment_id == 0xFFFF:
+                continue
             
             # Track when we first see this frame
             if frame_id not in fragment_buffers:

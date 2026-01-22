@@ -99,7 +99,6 @@ graph TB
     subgraph VehicleController["🚗 ESP32 Vehicle Controller"]
         subgraph FreeRTOS["FreeRTOS Scheduler"]
             subgraph HighPriority["🔴 Priorité Haute"]
-                SafetyMonitor["Safety Monitor<br/>Priority 5<br/>50ms"]
                 MotorControl["Motor Control<br/>Priority 4<br/>10ms"]
             end
             
@@ -139,7 +138,6 @@ graph TB
     Autonomous -->|"Commandes"| CommandQueue
     SensorFusion -->|"Lecture"| Ultrasonic
     SensorFusion -->|"Contrôle"| Servo
-    SafetyMonitor -->|"Arrêt d'urgence"| MotorDriver
     MotorDriver -->|"Signaux"| Motors
     Telemetry -->|"Statut"| ESPNOW
     
@@ -150,7 +148,7 @@ graph TB
     classDef hardware fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
     classDef comm fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:#000
     
-    class SafetyMonitor,MotorControl highPriority
+    class MotorControl highPriority
     class SensorFusion,Autonomous,Communication mediumPriority
     class Telemetry lowPriority
     class CommandQueue,ModeManager,MotorDriver shared
@@ -163,32 +161,26 @@ graph TB
 ```mermaid
 graph LR
     subgraph Tasks["FreeRTOS Tasks"]
-        T1["1. Safety Monitor<br/>⏱️ 50ms | 🔴 Priority 5<br/>━━━━━━━━━━━━━━━━<br/>• Watchdog monitoring<br/>• Emergency stop<br/>• Obstacle detection<br/>• Timeout monitoring"]
+        T2["2. Sensor Fusion<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Ultrasonic reading<br/>• Servo control<br/>• Distance filtering<br/>• Sensor data fusion"]
         
-        T2["2. Motor Control<br/>⏱️ 10ms | 🔴 Priority 4<br/>━━━━━━━━━━━━━━━━<br/>• Command processing<br/>• Mode switching<br/>• Motion execution<br/>• PWM control"]
+        T3["3. Autonomous<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Navigation logic<br/>• Obstacle avoidance<br/>• Path planning<br/>• Stuck detection"]
         
-        T3["3. Sensor Fusion<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Ultrasonic reading<br/>• Servo control<br/>• Distance filtering<br/>• Sensor data fusion"]
+        T4["4. Communication<br/>⏱️ 100ms | 🟡 Priority 2<br/>━━━━━━━━━━━━━━━━<br/>• ESP-NOW reception<br/>• Protocol parsing<br/>• Queue management<br/>• Handshake handling"]
         
-        T4["4. Autonomous<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Navigation logic<br/>• Obstacle avoidance<br/>• Path planning<br/>• Stuck detection"]
-        
-        T5["5. Communication<br/>⏱️ 100ms | 🟡 Priority 2<br/>━━━━━━━━━━━━━━━━<br/>• ESP-NOW reception<br/>• Protocol parsing<br/>• Queue management<br/>• Handshake handling"]
-        
-        T6["6. Telemetry<br/>⏱️ 100ms | 🟢 Priority 1<br/>━━━━━━━━━━━━━━━━<br/>• Status reporting<br/>• Debug info<br/>• Performance metrics"]
+        T5["5. Telemetry<br/>⏱️ 100ms | 🟢 Priority 1<br/>━━━━━━━━━━━━━━━━<br/>• Status reporting<br/>• Debug info<br/>• Performance metrics"]
     end
     
     classDef task1 fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
-    classDef task2 fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
+    classDef task2 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
     classDef task3 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
     classDef task4 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
-    classDef task5 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
-    classDef task6 fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
+    classDef task5 fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
     
     class T1 task1
     class T2 task2
     class T3 task3
     class T4 task4
     class T5 task5
-    class T6 task6
 ```
 
 ### 2.4 Modes de Conduite
@@ -205,6 +197,12 @@ Le système supporte **2 modes de conduite** gérés par le `ModeManager` :
 - Utilise capteur ultrasonique + servo pour scanning
 - Détection de blocage (stuck detection)
 - Algorithme de navigation avec scan 3 directions
+- **Améliorations Phase 0-4** :
+  - Filtrage médian des mesures ultrasoniques
+  - Scan déclenché 3 directions (45°, 90°, 135°)
+  - Zones de distance (sécurité, freinage, critique)
+  - Détection blocage par variance et oscillations
+  - Machine à états 7 états avec récupération
 
 ### 2.5 Schéma des Modes
 
@@ -302,7 +300,6 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph ApplicationLayer["Application Layer (Tasks)"]
-        SafetyTask["task_safety_monitor"]
         MotorTask["task_motor_control"]
         SensorTask["task_sensor_fusion"]
         AutoTask["task_autonomous"]
@@ -769,5 +766,283 @@ graph TB
 
 ---
 
+---
+
+## 7. Mode Autonome - Architecture Simplifiée
+
+### 7.1 Vue d'Ensemble
+
+Le mode autonome utilise une machine à états simplifiée (FSM) avec seulement 3 états pour orchestrer la navigation avec évitement d'obstacles. L'architecture a été drastiquement simplifiée pour réduire la complexité :
+- **3 états** au lieu de 7
+- **1 stratégie de récupération** au lieu de 5
+- **15 paramètres de configuration** au lieu de 50+
+- **Détection de blocage simple** basée sur timeout au lieu de méthodes complexes
+
+### 7.2 Diagramme FSM - Architecture Simplifiée (3 États)
+
+```mermaid
+stateDiagram-v2
+    [*] --> FORWARD: Démarrage
+    
+    state FORWARD {
+        [*] --> MesureDistance
+        MesureDistance --> AvanceNormal: distance ≥ 15cm
+        MesureDistance --> TransitionScan: distance < 15cm
+        AvanceNormal --> MesureDistance: CMD_FORWARD
+        TransitionScan --> [*]: CMD_STOP
+    }
+    
+    FORWARD --> SCAN: distance < 15cm
+    FORWARD --> SCAN: timeout 5s sans changement
+    
+    state SCAN {
+        [*] --> ScanGauche: 45°
+        ScanGauche --> ScanCentre: Attente 200ms
+        ScanCentre --> ScanDroite: 90° → 135°
+        ScanDroite --> ScanComplete: Validation
+        ScanComplete --> [*]
+    }
+    
+    SCAN --> ACTION: Scan complet + décision
+    
+    state ACTION {
+        [*] --> ExecuteMouvement
+        ExecuteMouvement --> RotationGauche: ROTATE_CCW
+        ExecuteMouvement --> RotationDroite: ROTATE_CW
+        ExecuteMouvement --> AvanceCourt: FORWARD 200ms
+        ExecuteMouvement --> DemiTour: BACKWARD + ROTATE aléatoire
+        RotationGauche --> [*]
+        RotationDroite --> [*]
+        AvanceCourt --> [*]
+        DemiTour --> [*]
+    }
+    
+    ACTION --> FORWARD: Mouvement terminé
+    
+    note right of FORWARD
+        Deux façons d'arriver au SCAN:
+        1. distance < 15cm (obstacle détecté)
+        2. Timeout 5s sans changement distance (bloqué)
+        
+        Détection blocage simple:
+        • Timeout: pas de changement ≥ 3cm pendant 5s
+        • Solution: recul 400ms puis scan
+    end note
+    
+    note right of ACTION
+        Actions possibles:
+        • LEFT: Rotation CCW 500ms
+        • RIGHT: Rotation CW 500ms
+        • FORWARD: Avance 200ms
+        • U-TURN: Recul 400ms + rotation aléatoire 500ms
+    end note
+```
+
+### 7.2.1 Flow Simplifié - Vue d'Ensemble
+
+```mermaid
+flowchart TD
+    Start([Démarrage]) --> Forward[FORWARD<br/>Mesure distance]
+    
+    Forward -->|distance ≥ 15cm| ForwardOK[Avance normale<br/>CMD_FORWARD]
+    Forward -->|distance < 15cm| Scan[SCAN<br/>3 directions<br/>45° 90° 135°]
+    Forward -->|Timeout 5s<br/>sans changement| Backup[Recul 400ms]
+    
+    ForwardOK --> Forward
+    Backup --> Scan
+    
+    Scan -->|Scan complet| Decision[Choisir meilleure direction<br/>Gauche > Droite > Avant > U-Turn]
+    
+    Decision -->|Gauche > 30cm| ActionLeft[ACTION<br/>ROTATE_CCW 500ms]
+    Decision -->|Droite > 30cm| ActionRight[ACTION<br/>ROTATE_CW 500ms]
+    Decision -->|Avant > 30cm| ActionForward[ACTION<br/>FORWARD 200ms]
+    Decision -->|Toutes < 30cm| ActionUTurn[ACTION<br/>BACKWARD 400ms<br/>+ ROTATE aléatoire 500ms]
+    
+    ActionLeft --> Forward
+    ActionRight --> Forward
+    ActionForward --> Forward
+    ActionUTurn --> Forward
+    
+    style Forward fill:#4CAF50,stroke:#2E7D32,stroke-width:3px,color:#fff
+    style Scan fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
+    style Decision fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    style ActionLeft fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    style ActionRight fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    style ActionForward fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    style ActionUTurn fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    style Backup fill:#F44336,stroke:#C62828,stroke-width:2px,color:#fff
+```
+
+### 7.2.2 Comparaison Avant/Après Simplification
+
+| Aspect | Avant | Après |
+|--------|-------|-------|
+| **États** | 7 (FORWARD, SCAN, DECISION, ACTION, BACKING_UP, STUCK_PIVOTING, STOPPED) | 3 (FORWARD, SCAN, ACTION) |
+| **Stratégies récupération** | 5 (BACKUP_TURN, PIVOT_360, BACKUP_LONG, RANDOM_TURN, WALL_FOLLOW) | 1 (Backup + rotation aléatoire) |
+| **Modules** | 6 (NavigationStateMachine, ObstacleScanner, StuckDetector, PositionTracker, RecoveryStrategies, DirectionDecider) | 3 (NavigationStateMachine, ObstacleScanner, DirectionDecider) |
+| **Lignes de code** | ~1200 | ~400 |
+| **Paramètres config** | 50+ | 15 |
+| **Détection blocage** | Variance, oscillation, position tracking | Timeout simple (5s sans changement) |
+
+### 7.3 Pipeline de Traitement
+
+```
+┌──────────────┐
+│ Ultrasonic   │
+│ Raw Reading  │
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ SensorFilter │ ← Filtre médian (buffer=3)
+│ (médian)     │
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Position     │
+│ Tracker      │ → Détection mouvement
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Stuck        │
+│ Detector     │ → Variance + Oscillations
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Navigation   │
+│ FSM          │ → Décision + Action
+└──────────────┘
+```
+
+### 7.4 Modules Principaux
+
+#### SensorFilter
+- **Rôle** : Éliminer spikes capteur ultrasonique
+- **Algorithme** : Filtre médian (buffer circulaire n=3)
+- **Fichiers** : `obstacle_detection/sensor_filter.h/cpp`
+
+#### ObstacleScanner
+- **Rôle** : Scanner environnement (3 directions)
+- **Angles** : 45° (gauche), 90° (avant), 135° (droite)
+- **Stabilisation** : 200ms par angle
+- **Fichiers** : `obstacle_detection/obstacle_scanner.h/cpp`
+
+#### NavigationStateMachine
+- **Rôle** : Orchestrer navigation (SIMPLIFIÉ)
+- **États** : 3 états (FORWARD, SCAN, ACTION)
+- **Zones distance** :
+  - **distance ≥ 15cm** : Avance normale (CMD_FORWARD)
+  - **distance < 15cm** : Arrêt + Scan
+- **Détection blocage** : Timeout simple (5s sans changement ≥ 3cm) → Recul + Scan
+- **Deux façons d'arriver au SCAN** :
+  1. Distance < 15cm (obstacle détecté)
+  2. Timeout 5s sans changement (bloqué) → Recul 400ms → Scan
+- **Fichiers** : `navigation/navigation_state_machine.h/cpp`
+
+#### DirectionDecider
+- **Rôle** : Choisir meilleure direction
+- **Priorité** : Gauche > Droite > Avant > U-Turn
+- **Critère** : Distance max parmi directions libres (> 30cm)
+- **Fichiers** : `navigation/direction_decider.h/cpp`
+
+### 7.5 Paramètres de Configuration Simplifiés
+
+Tous les paramètres sont dans `config.h` - Réduits à 15 paramètres essentiels :
+
+```cpp
+// Timing tâche
+#define AUTONOMOUS_TASK_PERIOD_MS    50    // Période de la tâche (20 Hz)
+
+// Seuils de distance
+#define AUTO_OBSTACLE_THRESHOLD_CM   15    // Distance déclenchement scan
+#define AUTO_MIN_FREE_SPACE_CM       30    // Espace minimum pour choisir direction
+
+// Vitesses
+#define AUTO_FORWARD_SPEED           200   // Vitesse avant (0-255)
+#define AUTO_TURN_SPEED             150   // Vitesse rotation (0-255)
+
+// Angles de scan
+#define AUTO_SCAN_LEFT_ANGLE         45    // Angle gauche
+#define AUTO_SCAN_CENTER_ANGLE       90    // Angle centre
+#define AUTO_SCAN_RIGHT_ANGLE        135   // Angle droite
+
+// Timing mouvements
+#define AUTO_TURN_DURATION_MS        500   // Durée rotation
+#define AUTO_BACKUP_DURATION_MS      400   // Durée recul
+#define AUTO_SERVO_SETTLE_MS         200   // Stabilisation servo
+
+// Détection blocage simple
+#define AUTO_STUCK_TIMEOUT_MS        5000  // Timeout sans changement = bloqué
+#define AUTO_STUCK_THRESHOLD_CM      3.0f  // Changement minimum pour "mouvement"
+
+// Filtrage
+#define AUTO_FILTER_SAMPLES          3     // Échantillons pour moyenne
+```
+
+### 7.6 Performance
+
+- **Temps scan** : 600-800ms (3 directions)
+- **Temps décision** : < 10ms
+- **Réaction totale** : < 1000ms (détection → action)
+- **Période cycle** : 50ms (20 Hz)
+
+### 7.7 Détection de Blocage Simplifiée
+
+La détection de blocage a été simplifiée pour réduire la complexité :
+
+#### Deux Façons d'Arriver au SCAN
+
+**1. Distance < 15cm (Obstacle détecté)**
+   - Le véhicule mesure la distance devant
+   - Si `distance < AUTO_OBSTACLE_THRESHOLD_CM` (15cm) → Arrêt immédiat + Transition vers SCAN
+   - Pas de zone de freinage : On avance normalement tant que distance ≥ 15cm
+
+**2. Timeout sans changement (Blocage détecté)**
+   - Le véhicule détecte qu'il est bloqué via un timeout simple
+   - Condition : Pas de changement de distance ≥ `AUTO_STUCK_THRESHOLD_CM` (3cm) pendant `AUTO_STUCK_TIMEOUT_MS` (5s)
+   - Solution : Recul 400ms puis transition vers SCAN
+
+#### Flow de Récupération Blocage
+
+```mermaid
+sequenceDiagram
+    participant FSM as NavigationStateMachine
+    participant SC as ObstacleScanner
+    
+    Note over FSM: FORWARD state
+    FSM->>SC: getFilteredDistance()
+    SC-->>FSM: distance
+    
+    FSM->>FSM: Check timeout<br/>(5s sans changement ≥ 3cm)
+    
+    alt Bloqué détecté
+        FSM->>FSM: CMD_BACKWARD (400ms)
+        FSM->>FSM: Transition to SCAN
+    else Obstacle détecté
+        FSM->>FSM: CMD_STOP
+        FSM->>FSM: Transition to SCAN
+    end
+    
+    FSM->>SC: scanDirection(45°, 90°, 135°)
+    SC-->>FSM: Scan results
+    FSM->>FSM: Decide direction → ACTION → FORWARD
+```
+
+#### Paramètres de Configuration Simplifiés
+
+Les paramètres de détection de blocage sont maintenant réduits à 2 :
+
+- `AUTO_STUCK_TIMEOUT_MS` (5000ms) : Timeout sans changement = bloqué
+- `AUTO_STUCK_THRESHOLD_CM` (3.0cm) : Changement minimum pour considérer "mouvement"
+
+#### Avantages de la Simplification
+
+1. **Moins de faux positifs** : Timeout simple au lieu de multiples méthodes complexes
+2. **Plus facile à déboguer** : Logique claire et directe
+3. **Moins de ressources** : Pas besoin de buffers circulaires ou historique complexe
+4. **Récupération rapide** : Recul immédiat puis scan pour trouver nouveau chemin
+4. **Vérifier que la récupération** génère réellement un mouvement significatif
+
+---
+
 **Document créé le 2025-01-27**  
-**Version 2.0 - Architecture Structurée avec Schémas Mermaid**
+**Version 2.1 - Architecture Structurée avec Schémas Mermaid + Mode Autonome Amélioré**

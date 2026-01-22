@@ -1,13 +1,22 @@
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
+
+// ESP-NOW WiFi channel - MUST match on both sender and vehicle
+#define ESPNOW_WIFI_CHANNEL 1
 
 // Control bytes (must match Vehicule/command_protocol.h)
 static const uint8_t CMD_HANDSHAKE_INIT  = 0xF0;
 static const uint8_t CMD_HANDSHAKE_ACK   = 0xF1;
 static const uint8_t CMD_HEARTBEAT       = 0xF2;  // reserved for future use
+static const uint8_t CMD_MODE_STATUS     = 0xF4;  // Vehicle → sender: current mode
 
 static const uint8_t PROTOCOL_VERSION    = 0x01;
+
+// Mode constants (must match Vehicule/mode_manager.h)
+static const uint8_t MODE_MANUAL         = 0;
+static const uint8_t MODE_AUTONOMOUS     = 1;
 
 uint8_t receiverMAC[] = {0x00, 0x4B, 0x12, 0x34, 0xF7, 0xF4};
 
@@ -21,22 +30,85 @@ struct_message outgoingMsg;
 // Handshake state
 volatile bool handshakeAcked = false;
 
-// Receive callback: watch for handshake ACK from vehicle
+// Connection state tracking
+volatile bool isConnected = false;
+unsigned long lastHandshakeAttempt = 0;
+unsigned long lastSuccessfulSend = 0;
+const unsigned long HANDSHAKE_RETRY_INTERVAL_MS = 2000;  // 2 seconds
+const unsigned long CONNECTION_CHECK_INTERVAL_MS = 5000;  // 5 seconds
+
+// Vehicle mode tracking (for blocking motion commands in autonomous mode)
+volatile uint8_t vehicleMode = MODE_MANUAL;  // Default to manual mode
+
+// REMOVED: getNavStateName() - No longer needed, telemetry reception disabled
+
+// Helper function to send handshake init frame
+void sendHandshakeInit() {
+  uint8_t buf[2];
+  buf[0] = CMD_HANDSHAKE_INIT;
+  buf[1] = PROTOCOL_VERSION;
+  esp_now_send(receiverMAC, buf, sizeof(buf));
+}
+
+// Receive callback: watch for handshake ACK and mode status from vehicle
 void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
-  if (len >= 1 && data[0] == CMD_HANDSHAKE_ACK) {
+  if (len < 1) return;
+  
+  uint8_t cmd = data[0];
+  
+  if (cmd == CMD_HANDSHAKE_ACK) {
+    if (!handshakeAcked || !isConnected) {
+      Serial.println("🤝 Handshake ACK received from vehicle");
+    }
     handshakeAcked = true;
-    Serial.println("🤝 Handshake ACK received from vehicle");
+    isConnected = true;
+    lastSuccessfulSend = millis();
+  } else if (cmd == CMD_MODE_STATUS && len >= 2) {
+    // Vehicle sent its current mode
+    uint8_t mode = data[1];
+    vehicleMode = mode;  // Update stored mode
+    
+    if (mode == MODE_MANUAL) {
+      Serial.println("📱 Vehicle mode: MANUAL");
+    } else if (mode == MODE_AUTONOMOUS) {
+      Serial.println("🤖 Vehicle mode: AUTONOMOUS (motion commands blocked)");
+    }
   }
 }
 
 void setup() {
   Serial.begin(115200);
+  delay(100);  // Small delay for serial stability
+  
+  Serial.println("\n========================================");
+  Serial.println("ESP-NOW Sender - Starting...");
+  Serial.println("========================================");
+  
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+  
+  // Force WiFi channel - CRITICAL for ESP-NOW reliability
+  // Both sender and vehicle MUST be on the same channel
+  esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  Serial.print("📡 WiFi channel set to: ");
+  Serial.println(ESPNOW_WIFI_CHANNEL);
+  
+  // Print MAC address for debugging
+  Serial.print("📍 Sender MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.print("🎯 Target MAC: ");
+  char targetMac[18];
+  snprintf(targetMac, sizeof(targetMac), "%02X:%02X:%02X:%02X:%02X:%02X",
+           receiverMAC[0], receiverMAC[1], receiverMAC[2],
+           receiverMAC[3], receiverMAC[4], receiverMAC[5]);
+  Serial.println(targetMac);
   
   if (esp_now_init() != ESP_OK) {
     Serial.println("❌ ESP-NOW init failed");
     return;
   }
+  Serial.println("✅ ESP-NOW initialized");
 
   // Receive callback is used to detect handshake ACK from vehicle.
   esp_now_register_recv_cb(onDataRecv);
@@ -50,7 +122,7 @@ void setup() {
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverMAC, 6);
-  peerInfo.channel = 0;
+  peerInfo.channel = ESPNOW_WIFI_CHANNEL;  // Use fixed channel
   peerInfo.encrypt = false;
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
@@ -58,54 +130,52 @@ void setup() {
     return;
   }
 
-  // Handshake phase: actively wait for ACK from vehicle
-  const uint32_t handshake_timeout_ms  = 60000;  // 60 seconds
-  const uint32_t handshake_interval_ms = 200;    // Send every 200ms
-  const uint32_t status_interval_ms    = 2000;   // Print status every 2 seconds
+  // Initial handshake attempt (non-blocking, max 10 seconds)
+  const uint32_t initial_timeout_ms = 10000;  // 10 seconds
+  const uint32_t handshake_interval_ms = 500;  // Send every 500ms
+  uint32_t start_time = millis();
+  lastHandshakeAttempt = start_time;
 
-  uint32_t start_time       = millis();
-  uint32_t last_status_time = start_time;
-  uint32_t last_send_time   = start_time;
+  Serial.println("📡 Attempting initial handshake with vehicle...");
 
-  Serial.println("📡 Starting ESP-NOW handshake with vehicle...");
-
-  while (!handshakeAcked && (millis() - start_time < handshake_timeout_ms)) {
+  while (!handshakeAcked && (millis() - start_time < initial_timeout_ms)) {
     uint32_t now = millis();
-
-    // Periodically send handshake-init frame: [INIT, version]
-    if (now - last_send_time >= handshake_interval_ms) {
-      uint8_t buf[2];
-      buf[0] = CMD_HANDSHAKE_INIT;
-      buf[1] = PROTOCOL_VERSION;
-      esp_now_send(receiverMAC, buf, sizeof(buf));
-      last_send_time = now;
+    if (now - lastHandshakeAttempt >= handshake_interval_ms) {
+      sendHandshakeInit();
+      lastHandshakeAttempt = now;
     }
-
-    // Print status updates periodically
-    if (now - last_status_time >= status_interval_ms) {
-      uint32_t elapsed   = now - start_time;
-      uint32_t remaining = (handshake_timeout_ms > elapsed)
-                             ? (handshake_timeout_ms - elapsed)
-                             : 0;
-      Serial.print("📡 Waiting for handshake ACK... (");
-      Serial.print(elapsed / 1000);
-      Serial.print("s elapsed, ");
-      Serial.print(remaining / 1000);
-      Serial.println("s remaining)");
-      last_status_time = now;
-    }
-
     delay(10);
   }
 
   if (handshakeAcked) {
-    Serial.println("🟢 Handshake complete - entering command mode");
+    isConnected = true;
+    Serial.println("🟢 Initial handshake complete");
   } else {
-    Serial.println("⚠️ Handshake timeout - proceeding in best-effort mode");
+    Serial.println("⚠️ Initial handshake timeout - will retry in background");
   }
 }
 
 void loop() {
+  unsigned long now = millis();
+  
+  // Check connection status periodically
+  if (!isConnected) {
+    // Not connected - attempt handshake every 2 seconds
+    if (now - lastHandshakeAttempt >= HANDSHAKE_RETRY_INTERVAL_MS) {
+      Serial.println("📡 Attempting reconnection...");
+      sendHandshakeInit();
+      lastHandshakeAttempt = now;
+    }
+  } else {
+    // Connected - check if connection is still alive
+    // Note: We don't immediately mark as disconnected, wait for actual send failure
+    if (now - lastSuccessfulSend > CONNECTION_CHECK_INTERVAL_MS && lastSuccessfulSend > 0) {
+      // No successful sends recently - connection might be lost
+      // Will verify on next send attempt
+    }
+  }
+  
+  // Handle serial commands
   if (Serial.available()) {
     // Read line from serial and convert to two bytes: command + param
     String input = Serial.readStringUntil('\n');
@@ -135,12 +205,45 @@ void loop() {
       return;
     }
 
-    outgoingMsg.command = static_cast<uint8_t>(cmdVal);
+    uint8_t cmd = static_cast<uint8_t>(cmdVal);
+    
+    // Check if this is a motion command (0x00-0x0C)
+    bool isMotionCommand = (cmd >= 0x00 && cmd <= 0x0C);
+    
+    // Check if this is a mode change command (always allowed)
+    bool isModeCommand = (cmd == 0x20 || cmd == 0x21 || cmd == 0x22);
+    
+    // Block motion commands if vehicle is in autonomous mode
+    if (isMotionCommand && vehicleMode == MODE_AUTONOMOUS) {
+      Serial.println("🚫 Blocked: Motion commands disabled in AUTONOMOUS mode");
+      Serial.println("💡 Send 0x20 to switch to MANUAL mode first");
+      return;
+    }
+
+    outgoingMsg.command = cmd;
     outgoingMsg.param   = static_cast<uint8_t>(paramVal);
 
-    esp_now_send(receiverMAC, reinterpret_cast<uint8_t*>(&outgoingMsg), sizeof(outgoingMsg));
-
-
+    // Send command and check result
+    esp_err_t result = esp_now_send(receiverMAC, 
+                                    reinterpret_cast<uint8_t*>(&outgoingMsg), 
+                                    sizeof(outgoingMsg));
+    
+    if (result == ESP_OK) {
+      lastSuccessfulSend = now;
+      if (!isConnected) {
+        Serial.println("✅ Send successful - connection restored");
+        isConnected = true;
+      }
+    } else {
+      Serial.print("❌ Send failed (error: ");
+      Serial.print(result);
+      Serial.println(") - connection lost");
+      isConnected = false;
+      // Will trigger reconnection attempts in next loop iteration
+    }
   }
+  
+  // Small delay to prevent tight loop
+  delay(10);
 }
 

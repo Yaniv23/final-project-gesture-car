@@ -13,12 +13,16 @@
 #include "../control/motion_control.h"
 #include "../control/mode_manager.h"
 #include "../communication/command_protocol.h"
+#include "../communication/espnow_handler.h"
 
 // Global motor driver instance (defined in main.cpp)
 extern MotorDriver motor_driver;
 
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
+
+// External task handle for autonomous task (defined in main.cpp)
+extern TaskHandle_t taskHandle_autonomous;
 
 void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
@@ -41,28 +45,54 @@ void task_motor_control(void *pvParameters) {
     while (1) {
         // Try to get command from queue
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
-            // Decide if we need to log this command (only when it changes)
-            bool shouldLog = (cmd_byte != last_logged_cmd);
-            
             // Handle mode control commands first
             if (cmd_byte == CMD_MODE_MANUAL) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_MANUAL);
                 motion_stop();  // Stop motors when changing mode
-                Serial.println("[MOTOR] Mode: MANUAL");
+                
+                // Suspend autonomous task when switching to manual mode
+                if (taskHandle_autonomous != NULL && old_mode != MODE_MANUAL) {
+                    vTaskSuspend(taskHandle_autonomous);
+                }
+                
+                // Notify sender of mode change
+                espnow_send_mode_status(0);  // 0 = MODE_MANUAL
+                
                 last_logged_cmd = cmd_byte;
                 continue;
             } else if (cmd_byte == CMD_MODE_AUTONOMOUS) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_AUTONOMOUS);
                 motion_stop();  // Stop motors when changing mode
-                Serial.println("[MOTOR] Mode: AUTONOMOUS");
-                last_logged_cmd = cmd_byte;
+                
+                // Resume autonomous task when switching to autonomous mode
+                if (taskHandle_autonomous != NULL && old_mode != MODE_AUTONOMOUS) {
+                    vTaskResume(taskHandle_autonomous);
+                }
+                
+                // Notify sender of mode change
+                espnow_send_mode_status(1);  // 1 = MODE_AUTONOMOUS
+                
                 continue;
             } else if (cmd_byte == CMD_MODE_TOGGLE) {
+                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 DrivingMode new_mode = mode_mgr.isManualMode() ? MODE_AUTONOMOUS : MODE_MANUAL;
                 mode_mgr.setMode(new_mode);
                 motion_stop();  // Stop motors when changing mode
-                Serial.print("[MOTOR] Mode: ");
-                Serial.println(new_mode == MODE_MANUAL ? "MANUAL" : "AUTONOMOUS");
+                
+                // Suspend or resume autonomous task based on new mode
+                if (taskHandle_autonomous != NULL) {
+                    if (new_mode == MODE_MANUAL) {
+                        vTaskSuspend(taskHandle_autonomous);
+                    } else {
+                        vTaskResume(taskHandle_autonomous);
+                    }
+                }
+                
+                // Notify sender of mode change
+                espnow_send_mode_status(new_mode == MODE_MANUAL ? 0 : 1);
+                
                 last_logged_cmd = cmd_byte;
                 continue;
             }
@@ -87,67 +117,48 @@ void task_motor_control(void *pvParameters) {
                 switch (cmd_byte) {
                 case CMD_STOP:
                     motion_stop();
-                    if (shouldLog) Serial.println("[MOTOR] STOP");
                     break;
                 case CMD_FORWARD:
                     motion_forward();
-                    if (shouldLog) Serial.println("[MOTOR] FORWARD");
                     break;
                 case CMD_BACKWARD:
                     motion_backward();
-                    if (shouldLog) Serial.println("[MOTOR] BACKWARD");
                     break;
                 case CMD_SIDEWAY_LEFT:
                     motion_sideway_left();
-                    if (shouldLog) Serial.println("[MOTOR] SIDEWAY_LEFT");
                     break;
                 case CMD_SIDEWAY_RIGHT:
                     motion_sideway_right();
-                    if (shouldLog) Serial.println("[MOTOR] SIDEWAY_RIGHT");
                     break;
                 case CMD_ROTATE_CW:
                     motion_rotate_cw();
-                    if (shouldLog) Serial.println("[MOTOR] ROTATE_CW");
                     break;
                 case CMD_ROTATE_CCW:
                     motion_rotate_ccw();
-                    if (shouldLog) Serial.println("[MOTOR] ROTATE_CCW");
                     break;
                 case CMD_DIAGONAL_315:
                     motion_diagonal_315();
-                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_315");
                     break;
                 case CMD_DIAGONAL_45:
                     motion_diagonal_45();
-                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_45");
                     break;
                 case CMD_DIAGONAL_225:
                     motion_diagonal_225();
-                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_225");
                     break;
                 case CMD_DIAGONAL_135:
                     motion_diagonal_135();
-                    if (shouldLog) Serial.println("[MOTOR] DIAGONAL_135");
                     break;
                 case CMD_PIVOT_LEFT:
                     motion_pivot_left();
-                    if (shouldLog) Serial.println("[MOTOR] PIVOT_LEFT");
                     break;
                 case CMD_PIVOT_RIGHT:
                     motion_pivot_right();
-                    if (shouldLog) Serial.println("[MOTOR] PIVOT_RIGHT");
                     break;
                 default:
-                    if (shouldLog) {
-                        Serial.print("[MOTOR] Unknown command byte: 0x");
-                        Serial.println(cmd_byte, HEX);
-                    }
-                    motion_stop();  // Safety: stop on unknown command
+                    // Unknown command - stop for safety
+                    motion_stop();
                     break;
                 }
-                
-                // Update last logged command after successful handling
-                last_logged_cmd = cmd_byte;
                 
                 // Return semaphore after command execution
                 xSemaphoreGive(xSafetySemaphore);

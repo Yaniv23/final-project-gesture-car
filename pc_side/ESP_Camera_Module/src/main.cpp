@@ -1,369 +1,295 @@
 #include <Arduino.h>
+#include <esp_camera.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include "esp_camera.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/message_buffer.h"
-#include "esp_log.h"
+#include <esp_heap_caps.h>
+#include <esp32/spiram.h>
 
-const char *WIFI_SSID     = "iPhone de Yaniv";
+// ===== WiFi Configuration =====
+const char *WIFI_SSID = "iPhone de Yaniv";
 const char *WIFI_PASSWORD = "12345678";
 
-const char* TARGET_IP = "172.20.10.7";
-const int UDP_PORT = 5000;
+// ===== UDP Configuration =====
+const char *TARGET_IP = "172.20.10.7";  // Replace with your PC IP
+const int TARGET_PORT = 5000;
+const int DISCOVERY_PORT = 5001;
+WiFiUDP udp;
+IPAddress targetIP;
 
-const size_t UDP_PACKET_MAX_SIZE = 1400;
-const size_t UDP_PACKET_DATA_SIZE = UDP_PACKET_MAX_SIZE - 8;
+// ===== Camera Configuration for OV3660 =====
+#define PWDN_GPIO_NUM 32
+#define RESET_GPIO_NUM -1   // Use internal pull-up, no external reset on AI Thinker ESP32-CAM
+#define XCLK_GPIO_NUM 0
+#define SIMD_GPIO_NUM 26    // SIOD / SDA
+#define SIMC_GPIO_NUM 27    // SIOC / SCL
 
-// LED interne de l'ESP32-CAM S3 (LED_BUILTIN ou GPIO 33 pour LED rouge intégrée)
-#ifndef LED_BUILTIN
-  #define LED_BUILTIN 33  // LED rouge intégrée sur ESP32-CAM (active LOW)
-#endif
-#define LED_PIN LED_BUILTIN
-#define LED_BLINK_DURATION_MS 200  // Durée d'un clignotement (allumé/éteint)
-#define LED_BLINK_COUNT 3          // Nombre de clignotements pour connexion réussie
+#define Y9_GPIO_NUM 35
+#define Y8_GPIO_NUM 34
+#define Y7_GPIO_NUM 39
+#define Y6_GPIO_NUM 36
+#define Y5_GPIO_NUM 21
+#define Y4_GPIO_NUM 19
+#define Y3_GPIO_NUM 18
+#define Y2_GPIO_NUM 5
+#define VSYNC_GPIO_NUM 25
+#define HREF_GPIO_NUM 23
+#define PCLK_GPIO_NUM 22
 
-struct PacketHeader {
-  uint32_t frame_id;
-  uint16_t fragment_id;
-  uint16_t total_fragments;
-};
-#define PWDN_GPIO_NUM    -1
-#define RESET_GPIO_NUM   -1
-#define XCLK_GPIO_NUM    15
-#define SIOD_GPIO_NUM    4
-#define SIOC_GPIO_NUM    5
+// ===== Frame Buffer Configuration =====
+#define FRAME_BUFFER_COUNT 2
+#define JPEG_QUALITY 15  // Higher compression = smaller frames = less fragmentation
 
-#define Y9_GPIO_NUM      16
-#define Y8_GPIO_NUM      17
-#define Y7_GPIO_NUM      18
-#define Y6_GPIO_NUM      12
-#define Y5_GPIO_NUM      10
-#define Y4_GPIO_NUM      8
-#define Y3_GPIO_NUM      9
-#define Y2_GPIO_NUM      11
+// ===== UDP Packet Configuration =====
+constexpr size_t PACKET_HEADER_SIZE = 8;            // frame_id (4) + fragment_id (2) + total_fragments (2)
+constexpr size_t MAX_PAYLOAD_PER_PACKET = 1024;     // bytes of JPEG data per UDP packet
+constexpr uint16_t START_OF_FRAME_MARKER = 0xFFFF;   // fragment_id used as frame start marker
 
-#define VSYNC_GPIO_NUM   6
-#define HREF_GPIO_NUM    7
-#define PCLK_GPIO_NUM    13
+volatile uint32_t frameID = 0;
 
-MessageBufferHandle_t frame_buffer;
+// ===== Function Prototypes =====
+void initWiFi();
+void initCamera();
+void handleDiscovery();
+void sendFrameOverUDP(camera_fb_t *fb);
+void printCameraInfo();
+void writeHeader(uint8_t *buf, uint32_t frameId, uint16_t fragmentId, uint16_t totalFragments);
 
-// Statistics
-static uint32_t frames_dropped = 0;
-static uint32_t packets_sent = 0;
-static uint32_t packets_failed = 0;
-
-// Fonction pour faire clignoter la LED interne 3 fois (indication connexion WiFi réussie)
-// Note: Sur ESP32-CAM, la LED rouge est active LOW (LOW = allumé, HIGH = éteint)
-void blinkWiFiConnectedLED() {
-  for (int i = 0; i < LED_BLINK_COUNT; i++) {
-    digitalWrite(LED_PIN, LOW);   // Allumer la LED (active LOW)
-    delay(LED_BLINK_DURATION_MS);
-    digitalWrite(LED_PIN, HIGH);  // Éteindre la LED
-    delay(LED_BLINK_DURATION_MS);
-  }
-}
-
-void cam_task(void *pvParameters) {
-  while (true) {
-    camera_fb_t *fb = esp_camera_fb_get();
-    if (!fb) {
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-      continue;
-    }
-
-    if (fb->len > 35000) {
-      esp_camera_fb_return(fb);
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-      continue;
-    }
-    
-    // Flow control: Check if buffer has space, drop frame if full (non-blocking)
-    size_t space_available = xMessageBufferSpacesAvailable(frame_buffer);
-    if (space_available < fb->len) {
-      // Buffer is full, drop this frame to prevent blocking
-      frames_dropped++;
-      esp_camera_fb_return(fb);
-      vTaskDelay(5 / portTICK_PERIOD_MS);
-      continue;
-    }
-    
-    BaseType_t result = xMessageBufferSend(frame_buffer, (void *)fb->buf, fb->len, 0);
-    if (result != pdTRUE) {
-      frames_dropped++;
-    }
-    esp_camera_fb_return(fb);
-    vTaskDelay(1 / portTICK_PERIOD_MS);
-  }
-}
-
-static uint8_t frame_buffer_data[35000];
-static uint32_t frame_counter = 0;
-static uint32_t last_wifi_check = 0;
-static const uint32_t WIFI_CHECK_INTERVAL_MS = 5000; // Check WiFi every 5 seconds
-
-// Function to check and reconnect WiFi if needed
-bool ensureWiFiConnected() {
-  wl_status_t status = WiFi.status();
-  if (status == WL_CONNECTED) {
-    return true;
-  }
-  
-  // Try to reconnect
-  if (status == WL_DISCONNECTED || status == WL_CONNECTION_LOST) {
-    Serial.printf("[WiFi] Connection lost, attempting reconnect...\n");
-    WiFi.disconnect();
-    delay(100);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-      delay(250);
-      attempts++;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
-      blinkWiFiConnectedLED();  // Clignoter la LED pour indiquer la reconnexion
-      return true;
-    } else {
-      Serial.printf("[WiFi] Reconnection failed\n");
-      return false;
-    }
-  }
-  
-  return false;
-}
-
-// Function to send UDP packet with retry logic
-bool sendUdpPacket(WiFiUDP& udp, const uint8_t* data, size_t len, uint32_t frame_id, uint16_t frag_id) {
-  const int MAX_RETRIES = 3;
-  int retry_count = 0;
-  
-  while (retry_count < MAX_RETRIES) {
-    // Check WiFi before each attempt
-    if (!ensureWiFiConnected()) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      retry_count++;
-      continue;
-    }
-    
-    // Try to begin packet
-    if (!udp.beginPacket(TARGET_IP, UDP_PORT)) {
-      retry_count++;
-      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS); // Exponential backoff
-      continue;
-    }
-    
-    // Write data
-    size_t written = udp.write(data, len);
-    if (written != len) {
-      udp.stop();
-      retry_count++;
-      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
-      continue;
-    }
-    
-    // End packet and check result
-    if (!udp.endPacket()) {
-      packets_failed++;
-      retry_count++;
-      vTaskDelay((retry_count * 5) / portTICK_PERIOD_MS);
-      continue;
-    }
-    
-    // Success
-    packets_sent++;
-    return true;
-  }
-  
-  // All retries failed
-  packets_failed++;
-  return false;
-}
-
-void udp_client_task(void *pvParameters) {
-  WiFiUDP udp;
-  
-  while (true) {
-    // Periodic WiFi status check
-    uint32_t now = millis();
-    if (now - last_wifi_check > WIFI_CHECK_INTERVAL_MS) {
-      ensureWiFiConnected();
-      last_wifi_check = now;
-    }
-    
-    if (WiFi.status() != WL_CONNECTED) {
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      continue;
-    }
-
-    size_t frame_size = xMessageBufferReceive(frame_buffer, (void *)frame_buffer_data, sizeof(frame_buffer_data), portMAX_DELAY);
-    
-    if (frame_size > 0) {
-      uint16_t total_fragments = (frame_size + UDP_PACKET_DATA_SIZE - 1) / UDP_PACKET_DATA_SIZE;
-      frame_counter++;
-      
-      // Calculate dynamic delay based on fragment size and total fragments
-      // Larger packets and more fragments need more time between sends
-      uint32_t base_delay_ms = 2; // Base delay of 2ms
-      uint32_t fragment_delay = base_delay_ms + (total_fragments / 10); // Add delay for many fragments
-      
-      for (uint16_t frag = 0; frag < total_fragments; frag++) {
-        size_t offset = frag * UDP_PACKET_DATA_SIZE;
-        size_t fragment_size = (offset + UDP_PACKET_DATA_SIZE <= frame_size) 
-                               ? UDP_PACKET_DATA_SIZE 
-                               : (frame_size - offset);
-        
-        PacketHeader header;
-        header.frame_id = frame_counter;
-        header.fragment_id = frag;
-        header.total_fragments = total_fragments;
-        
-        // Prepare packet data
-        uint8_t packet_data[sizeof(header) + fragment_size];
-        memcpy(packet_data, &header, sizeof(header));
-        memcpy(packet_data + sizeof(header), frame_buffer_data + offset, fragment_size);
-        
-        // Send with retry logic
-        bool success = sendUdpPacket(udp, packet_data, sizeof(packet_data), frame_counter, frag);
-        
-        if (!success && frag == 0) {
-          // If first fragment fails, skip entire frame to avoid partial frames
-          break;
-        }
-        
-        // Dynamic delay between fragments (except last one)
-        if (frag < total_fragments - 1) {
-          vTaskDelay(fragment_delay / portTICK_PERIOD_MS);
-        }
-      }
-      
-      // Periodic statistics (every 100 frames)
-      if (frame_counter % 100 == 0) {
-        Serial.printf("[Stats] Frames: %lu, Dropped: %lu, Packets Sent: %lu, Failed: %lu\n",
-                      frame_counter, frames_dropped, packets_sent, packets_failed);
-      }
-    }
-    
-    vTaskDelay(1 / portTICK_PERIOD_MS);
-  }
-}
-
-bool initCamera() {
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM;
-  config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_QVGA;
-  config.jpeg_quality = 15;
-  config.fb_count = 2;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_LATEST;
-
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x\n", err);
-    return false;
-  }
-
-  sensor_t *s = esp_camera_sensor_get();
-  if (s != nullptr) {
-    s->set_hmirror(s, true);
-    s->set_vflip(s, true);
-  }
-
-  return true;
+void writeHeader(uint8_t *buf, uint32_t frameId, uint16_t fragmentId, uint16_t totalFragments) {
+  buf[0] = frameId & 0xFF;
+  buf[1] = (frameId >> 8) & 0xFF;
+  buf[2] = (frameId >> 16) & 0xFF;
+  buf[3] = (frameId >> 24) & 0xFF;
+  buf[4] = fragmentId & 0xFF;
+  buf[5] = (fragmentId >> 8) & 0xFF;
+  buf[6] = totalFragments & 0xFF;
+  buf[7] = (totalFragments >> 8) & 0xFF;
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
+  delay(1000);
   
-  // Initialiser la LED interne en sortie
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);  // LED éteinte au démarrage (active LOW)
-  
-  esp_log_level_set("wifi", ESP_LOG_ERROR);
-  esp_log_level_set("WiFiUdp", ESP_LOG_ERROR);
+  Serial.println("\n\n");
+  Serial.println("================================");
+  Serial.println("ESP32-CAM OV3660 UDP Streamer");
+  Serial.println("================================");
 
-  if (!psramFound()) {
-    Serial.println("No PSRAM found! Camera needs PSRAM on ESP32-S3.");
-    while (true) {
-      delay(1000);
+  // Initialize camera
+  Serial.println("[SETUP] Initializing camera...");
+  initCamera();
+  printCameraInfo();
+
+  // Stabilize camera - discard first frames and wait for sensor to settle
+  Serial.println("[SETUP] Stabilizing camera sensor...");
+  for (int i = 0; i < 10; i++) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb) {
+      esp_camera_fb_return(fb);
     }
+    delay(100);
+  }
+  Serial.println("[SETUP] Camera stabilization complete");
+
+  // Initialize WiFi
+  Serial.println("[SETUP] Initializing WiFi...");
+  initWiFi();
+
+  // Initialize UDP
+  Serial.println("[SETUP] Initializing UDP...");
+  udp.begin(DISCOVERY_PORT);
+
+  Serial.println("[SETUP] Setup complete. Ready to stream!");
+  Serial.println("================================\n");
+}
+
+void loop() {
+  // Handle discovery requests
+  handleDiscovery();
+
+  // Capture and send frame
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("[ERROR] Camera capture failed - fb_get returned NULL");
+    // Reset camera if capture fails repeatedly
+    static int failCount = 0;
+    failCount++;
+    if (failCount > 50) {
+      Serial.println("[ERROR] Too many capture failures, reinitializing camera...");
+      esp_camera_deinit();
+      delay(100);
+      initCamera();
+      failCount = 0;
+      // Stabilize again
+      for (int i = 0; i < 5; i++) {
+        camera_fb_t *temp_fb = esp_camera_fb_get();
+        if (temp_fb) esp_camera_fb_return(temp_fb);
+        delay(50);
+      }
+    }
+    delay(50);
+    return;
+  } else {
+    static int failCount = 0;
+    failCount = 0; // Reset fail counter on success
   }
 
-  if (!initCamera()) {
-    Serial.println("Camera init failed, stopping.");
-    while (true) {
-      delay(1000);
-    }
-  }
+  // Send frame over UDP
+  sendFrameOverUDP(fb);
 
+  // Return frame buffer to driver
+  esp_camera_fb_return(fb);
+
+  // Delay to ensure all fragments are sent before next frame
+  // 20ms = ~50 FPS max
+  delay(20);
+}
+
+// ===== WiFi Initialization =====
+void initWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);  // Disable WiFi sleep for better performance
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
+    Serial.print(".");
     attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-    blinkWiFiConnectedLED();  // Clignoter la LED 3 fois pour indiquer la connexion réussie
-    
-    frame_buffer = xMessageBufferCreate(35000);
-    if (frame_buffer == NULL) {
-      Serial.println("Failed to create frame buffer!");
-      while (true) {
-        delay(1000);
-      }
-    }
-    
-    xTaskCreate(
-      cam_task,
-      "cam_task",
-      8192,
-      NULL,
-      configMAX_PRIORITIES,
-      NULL
-    );
-    
-    xTaskCreate(
-      udp_client_task,
-      "udp_client",
-      8192,
-      NULL,
-      configMAX_PRIORITIES,
-      NULL
-    );
+    Serial.println("\n[WiFi] Connected!");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("[WiFi] RSSI: ");
+    Serial.println(WiFi.RSSI());
+    targetIP.fromString(TARGET_IP);
   } else {
-    Serial.println("WiFi connection failed. Check SSID/PASSWORD.");
+    Serial.println("\n[WiFi] Failed to connect");
   }
 }
 
-void loop() {
-  delay(1000);
+// ===== Camera Initialization =====
+void initCamera() {
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  // Data lines d0-d7 must map to Y2-Y9 in ascending order
+  config.pin_d7 = Y9_GPIO_NUM; // D7 -> Y9
+  config.pin_d6 = Y8_GPIO_NUM; // D6 -> Y8
+  config.pin_d5 = Y7_GPIO_NUM; // D5 -> Y7
+  config.pin_d4 = Y6_GPIO_NUM; // D4 -> Y6
+  config.pin_d3 = Y5_GPIO_NUM; // D3 -> Y5
+  config.pin_d2 = Y4_GPIO_NUM; // D2 -> Y4
+  config.pin_d1 = Y3_GPIO_NUM; // D1 -> Y3
+  config.pin_d0 = Y2_GPIO_NUM; // D0 -> Y2
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_sccb_sda = SIMD_GPIO_NUM;
+  config.pin_sccb_scl = SIMC_GPIO_NUM;
+
+  config.xclk_freq_hz = 20000000;  // 20MHz clock for OV3660
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  // Image resolution
+  config.frame_size = FRAMESIZE_QVGA;  // 320x240 - minimal fragmentation
+  config.jpeg_quality = JPEG_QUALITY;
+  config.fb_count = FRAME_BUFFER_COUNT;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;
+
+  // Camera module
+  config.sccb_i2c_port = 0;  // Default I2C port for ESP32-CAM
+
+  // Initialize camera
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("[ERROR] Camera init failed with error 0x%x\n", err);
+    return;
+  }
+
+  // Get sensor and configure for OV3660
+  sensor_t *s = esp_camera_sensor_get();
+  if (s->id.PID == OV3660_PID) {
+    Serial.println("[Camera] OV3660 sensor detected");
+    // OV3660 specific settings
+    s->set_brightness(s, 0);     // brightness
+    s->set_contrast(s, 0);       // contrast
+    s->set_saturation(s, 0);     // saturation
+    s->set_special_effect(s, 0); // no special effect
+    s->set_wb_mode(s, 1);        // auto white balance
+    s->set_exposure_ctrl(s, 1);  // auto exposure
+    s->set_aec_value(s, 300);    // exposure value
+  } else {
+    Serial.printf("[Camera] Sensor ID: 0x%04X (OV3660 PID: 0x%04X)\n", s->id.PID, OV3660_PID);
+  }
+
+  Serial.println("[Camera] Camera initialized successfully");
 }
 
+// ===== Discovery Handler =====
+void handleDiscovery() {
+  int packetSize = udp.parsePacket();
+  if (packetSize) {
+    char incomingPacket[255];
+    int len = udp.read(incomingPacket, 255);
+    if (len > 0) {
+      incomingPacket[len] = 0;
+    }
+    Serial.printf("[Discovery] Received: %s from %s:%d\n", incomingPacket, udp.remoteIP().toString().c_str(), udp.remotePort());
+
+    // Respond with our IP and ready status
+    String response = "ESP32-CAM:" + WiFi.localIP().toString() + ":READY";
+    udp.beginPacket(udp.remoteIP(), udp.remotePort());
+    udp.write((uint8_t *)response.c_str(), response.length());
+    udp.endPacket();
+  }
+}
+
+// ===== UDP Frame Transmission =====
+void sendFrameOverUDP(camera_fb_t *fb) {
+  if (!fb || fb->len == 0) {
+    Serial.println("[ERROR] Invalid frame buffer");
+    return;
+  }
+
+  const size_t maxChunk = MAX_PAYLOAD_PER_PACKET;
+  const uint16_t totalFragments = (fb->len + maxChunk - 1) / maxChunk;
+  const uint32_t currentFrameId = frameID++;
+
+  uint8_t header[PACKET_HEADER_SIZE];
+
+  // Send frame start marker
+  writeHeader(header, currentFrameId, START_OF_FRAME_MARKER, totalFragments);
+  udp.beginPacket(targetIP, TARGET_PORT);
+  udp.write(header, PACKET_HEADER_SIZE);
+  udp.endPacket();
+
+  // Send frame data in fragments
+  size_t offset = 0;
+  for (uint16_t frag = 0; frag < totalFragments; ++frag) {
+    const size_t chunkSize = (offset + maxChunk > fb->len) ? (fb->len - offset) : maxChunk;
+    writeHeader(header, currentFrameId, frag, totalFragments);
+    udp.beginPacket(targetIP, TARGET_PORT);
+    udp.write(header, PACKET_HEADER_SIZE);
+    udp.write(fb->buf + offset, chunkSize);
+    udp.endPacket();
+    offset += chunkSize;
+  }
+
+  Serial.printf("[UDP] Sent frame %u in %u fragments (total: %u bytes)\n", currentFrameId, totalFragments, fb->len);
+}
+
+// ===== Debug Info =====
+void printCameraInfo() {
+  sensor_t *s = esp_camera_sensor_get();
+  Serial.println("\n[Camera Info]");
+  Serial.printf("  Sensor ID: 0x%04X\n", s->id.PID);
+  Serial.printf("  PSRAM Size: %u bytes\n", esp_spiram_get_size());
+  Serial.printf("  Free PSRAM: %u bytes\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  Serial.println();
+}

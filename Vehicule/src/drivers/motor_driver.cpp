@@ -51,7 +51,6 @@ bool MotorDriver::init(const MotorConfig motors[4]) {
     }
 
     initialized_ = true;
-    Serial.println("[MotorDriver] Initialized with individual enable pins per motor");
     return true;
 }
 

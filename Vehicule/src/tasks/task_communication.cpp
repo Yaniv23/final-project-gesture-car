@@ -14,6 +14,7 @@
 #include "../communication/espnow_handler.h"
 #include "../communication/command_protocol.h"
 #include "../safety/timeout_monitor.h"
+#include "../control/mode_manager.h"
 
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
@@ -28,8 +29,6 @@ void task_communication(void *pvParameters) {
     }
     
     // ESP-NOW is initialized once in main.cpp during setup()
-    Serial.println("[TASK_COMM] Running in NORMAL MODE - waiting for ESP-NOW commands");
-    
     ESPNowRawMessage raw_msg;
     
     while (1) {
@@ -42,20 +41,15 @@ void task_communication(void *pvParameters) {
                 // Handshake / control messages (NOT motion commands)
                 // -----------------------------------------------------------------
                 if (first_byte == CMD_HANDSHAKE_INIT) {
-                    Serial.print("[COMM] 🤝 Handshake INIT received, protocol byte = ");
-                    Serial.println(raw_msg.second_byte);
-
                     // Echo back an ACK with the protocol/status byte
-                    if (!espnow_send_handshake_ack(raw_msg.second_byte)) {
-                        Serial.println("[COMM] ⚠️ Failed to send HANDSHAKE_ACK");
-                    } else {
-                        Serial.println("[COMM] ✅ HANDSHAKE_ACK sent");
-                    }
-
+                    espnow_send_handshake_ack(raw_msg.second_byte);
+                    // Also send current mode status to sender
+                    ModeManager& mode_mgr = ModeManager::getInstance();
+                    uint8_t current_mode = (mode_mgr.isAutonomousMode()) ? 1 : 0;
+                    espnow_send_mode_status(current_mode);
                     // Do NOT forward handshake frames to motor control
                 } else if (first_byte == CMD_HEARTBEAT) {
                     // Optional future use: could feed timeout monitor here
-                    Serial.println("[COMM] 💓 HEARTBEAT frame received (ignored for now)");
                 } else {
                     // -----------------------------------------------------------------
                     // Normal motion commands and mode control commands
@@ -72,12 +66,10 @@ void task_communication(void *pvParameters) {
                              first_byte == CMD_MODE_AUTONOMOUS || 
                              first_byte == CMD_MODE_TOGGLE) {
                         uint8_t cmd_byte = first_byte;
-                        if (xQueueSend(xCommandQueue, &cmd_byte, 0) != pdTRUE) {
-                            Serial.println("[COMM] Warning: Command queue full!");
-                        }
+                        xQueueSend(xCommandQueue, &cmd_byte, 0);
+                        // Command dropped if queue full (non-blocking)
                     } else {
-                        Serial.print("[COMM] ❌ INVALID command byte (ignored): 0x");
-                        Serial.println(first_byte, HEX);
+                        // Invalid command byte - ignored
                     }
                 }
             }
