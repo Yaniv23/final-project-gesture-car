@@ -254,3 +254,7 @@ secrets.json
 .bmad-core/
 .cursor/
 ._bmad/
+_bmad/
+
+# PlatformIO build folders
+.pio/
