@@ -143,12 +143,14 @@ void motion_diagonal_315() {
         return;
     }
 
-    // FR: Forward, BL: Forward (others stopped)
+    // Diagonal 315°: FL + BR forward 
+    // INVERTED: Forward uses negative speed (like motion_forward)
+ 
     int16_t speed = getMotorSpeed();
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }
 
 void motion_diagonal_45() {
@@ -156,14 +158,14 @@ void motion_diagonal_45() {
         return;
     }
 
-    // FL: Forward, BR: Forward (others stopped)
-    // Set active motors first, then stopped motors
-    int16_t speed = getMotorSpeed();
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
-    // Then stop the other motors
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
-    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+    // Diagonal 45°: FL + BR backward
+    // INVERTED: Backward uses positive speed (like motion_backward)
+  
+    int16_t speed = -getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
 }
 
 void motion_diagonal_225() {
@@ -171,12 +173,11 @@ void motion_diagonal_225() {
         return;
     }
 
-    // FR: Backward, BL: Backward (others stopped)
-    // Set active motors first, then stopped motors
-    int16_t speed = -getMotorSpeed();
+    // Diagonal 225° (backward-left): FR + BL backward - CORRECT
+    // INVERTED: Backward uses positive speed (like motion_backward)
+    int16_t speed = getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
-    // Then stop the other motors
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
 }
@@ -186,12 +187,11 @@ void motion_diagonal_135() {
         return;
     }
 
-    // FL: Backward, BR: Backward (others stopped)
-    // Set active motors first, then stopped motors
+    // Diagonal 135°: FR + BL forward (was 315°)
+    // INVERTED: Forward uses negative speed (like motion_forward)
     int16_t speed = -getMotorSpeed();
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
-    // Then stop the other motors
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
     motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
 }

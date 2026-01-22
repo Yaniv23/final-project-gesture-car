@@ -12,7 +12,6 @@ The vehicle controller is built on **FreeRTOS**, a real-time operating system th
 graph TB
     subgraph ESP32Controller["ESP32 Vehicle Controller"]
         subgraph FreeRTOS["FreeRTOS Scheduler<br/>(Priority-based preemptive)"]
-            SafetyMonitor["Safety Monitor<br/>(Priority 5)"]
             MotorControl["Motor Control<br/>(Priority 4)"]
             SensorFusion["Sensor Fusion<br/>(Priority 3)"]
             Communication["Communication<br/>(Priority 2)"]
@@ -33,7 +32,6 @@ graph TB
         ESPNOW["ESP-NOW"]
     end
     
-    SafetyMonitor --> SharedResources
     MotorControl --> SharedResources
     SensorFusion --> SharedResources
     Communication --> SharedResources
@@ -293,7 +291,6 @@ Vehicule/src/
 │   ├── task_motor_control.cpp  # Motor control task
 │   ├── task_communication.cpp # ESP-NOW task
 │   ├── task_sensor_fusion.cpp  # Sensor task
-│   ├── task_safety_monitor.cpp # Safety task
 │   └── task_telemetry.cpp     # Telemetry task
 │
 └── shared/                     # Shared resources

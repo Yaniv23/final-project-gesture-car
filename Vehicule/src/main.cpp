@@ -10,6 +10,14 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_now.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"  // For brownout detection disable
+
+// LED_BUILTIN is GPIO 2 on most ESP32 dev boards
+// Define it explicitly in case it's not defined
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
 
 // Configuration
 #include "config.h"
@@ -35,61 +43,73 @@
 // Task implementations (forward declarations)
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
-void task_safety_monitor(void *pvParameters);
 void task_autonomous(void *pvParameters);
+// REMOVED: void task_telemetry(void *pvParameters); - Telemetry disabled to fix command reception
+// REMOVED: void task_safety_monitor(void *pvParameters); - Safety monitor task not used
 
 // Global motor driver instance
 MotorDriver motor_driver;
 
 // Task handles for suspending/resuming tasks
-TaskHandle_t taskHandle_safety = NULL;
 TaskHandle_t taskHandle_motor = NULL;
 TaskHandle_t taskHandle_comm = NULL;
 TaskHandle_t taskHandle_autonomous = NULL;
+// REMOVED: TaskHandle_t taskHandle_telemetry = NULL; - Telemetry disabled
+// REMOVED: TaskHandle_t taskHandle_safety = NULL; - Safety monitor task not used
 
 // Global flag to signal tasks that setup is complete
 volatile bool setupComplete = false;
 
 void setup() {
+    // =========================================================================
+    // CRITICAL: Disable brownout detector for battery power operation
+    // The ESP32 brownout detector can trigger false resets when:
+    // - Powered via VIN from battery (voltage drops during WiFi TX)
+    // - Current spikes occur during WiFi initialization (300-400mA)
+    // =========================================================================
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+    
     // Initialize Serial for debugging
     Serial.begin(SERIAL_BAUD_RATE);
-    delay(1000);  // Wait for Serial Monitor to connect
+    
+    // Setup built-in LED for visual feedback when not connected to USB
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);  // LED ON = booting
+    
+    // CRITICAL: Extended delay for battery power stabilization
+    // When powered from battery, the ESP32 needs time for:
+    // - Voltage regulators to stabilize
+    // - Capacitors to charge
+    // - Power supply to handle WiFi current spikes
+    delay(3000);  // 3 seconds for power stabilization (increased from 2s)
     
     Serial.println("\n========================================");
     Serial.println("Gesture Car - ESP32 Vehicle Controller");
-    Serial.println("Phase 1: Infrastructure Setup");
-    Serial.println(">>> RUNNING IN NORMAL MODE <<<");
-    Serial.println(">>> PRODUCTION MODE <<<");
-    
-    Serial.println("[SETUP] Initializing WiFi and ESP-NOW...");
+    Serial.println("========================================");
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
-    delay(200);  // Give WiFi time to initialize
+    delay(1000);  // Increased delay for WiFi stability on battery power (was 500ms)
     
-    // Print MAC address
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, mac);
-    Serial.print("[SETUP] MAC Address: ");
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.println(macStr);
+    // Additional WiFi power configuration for battery operation
+    // Set WiFi to max power to ensure reliable ESP-NOW communication
+    esp_wifi_set_max_tx_power(78);  // Max TX power (19.5 dBm)
     
     // Initialize ESP-NOW
     if (espnow_init(false)) {
-        Serial.println("[SETUP] ESP-NOW initialized successfully");
-        
-        // Wait for connection from sender before continuing
-        Serial.println("[SETUP] Waiting for ESP-NOW connection from sender...");
-        if (!espnow_wait_for_connection(ESP_NOW_CONNECTION_TIMEOUT_MS)) {
-            Serial.println("[ERROR] ESP-NOW connection timeout!");
-            Serial.println("[ERROR] No message received from sender within timeout period");
-            while (1) delay(1000);  // Halt on error
+        // Visual feedback: 3 quick blinks = ESP-NOW ready
+        for (int i = 0; i < 3; i++) {
+            digitalWrite(LED_BUILTIN, LOW);
+            delay(100);
+            digitalWrite(LED_BUILTIN, HIGH);
+            delay(100);
         }
-        Serial.println("[SETUP] ✓ ESP-NOW connection established");
     } else {
         Serial.println("[ERROR] ESP-NOW initialization failed!");
-        while (1) delay(1000);  // Halt on error
+        // Visual feedback: rapid blinking = error
+        while (1) {
+            digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+            delay(200);
+        }
     }
     Serial.println();
     
@@ -133,18 +153,9 @@ void setup() {
     Serial.println("[SETUP] Creating FreeRTOS tasks...");
     Serial.println("========================================");
     
-    // Task 1: Safety Monitor (Highest Priority - 5)
-    xTaskCreate(
-        task_safety_monitor, // Function to execute
-        "SafetyMonitor", // Task name
-        TASK_STACK_SIZE_SAFETY_MONITOR, // Stack size
-        NULL, // Task parameters
-        TASK_PRIORITY_SAFETY_MONITOR, // Priority
-        &taskHandle_safety // Task handle
-    );
-    Serial.println("[SETUP] Created task: SafetyMonitor (Priority 5)");
+    // REMOVED: Safety Monitor task - not used (watchdog fed in loop())
     
-    // Task 2: Motor Control (Priority 4)
+    // Task 1: Motor Control (Priority 4)
     xTaskCreate(
         task_motor_control,
         "MotorControl",
@@ -168,13 +179,10 @@ void setup() {
     
     // Initialize ModeManager and confirm default mode
     ModeManager& mode_mgr = ModeManager::getInstance();
-    Serial.print("[SETUP] Initial driving mode: ");
-    Serial.println(mode_mgr.isManualMode() ? "MANUAL" : "AUTONOMOUS");
     
     // Suspend autonomous task since default mode is MANUAL
     if (taskHandle_autonomous != NULL) {
         vTaskSuspend(taskHandle_autonomous);
-        Serial.println("[SETUP] Autonomous task suspended (default mode: MANUAL)");
     }
     
     // Task 5: Communication (Priority 2)
@@ -188,18 +196,17 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: Communication (Priority 2)");
     
-    Serial.println("========================================");
-    Serial.println("[SETUP] All tasks created successfully!");
-    Serial.println("========================================");
-    
     // Signal all tasks that setup is complete
     setupComplete = true;
     
     // Give tasks a moment to start
     delay(100);
     
-    Serial.println("[SETUP] System ready 🎉- FreeRTOS scheduler running!\n");
+    Serial.println("[SETUP] System ready - FreeRTOS scheduler running!\n");
 }
+
+// LED heartbeat counter for visual feedback
+static uint32_t led_counter = 0;
 
 void loop() {
     // Empty - FreeRTOS tasks handle everything
@@ -208,6 +215,17 @@ void loop() {
     
     // Feed watchdog timer (safety mechanism)
     watchdog_feed();
+    
+    // Visual heartbeat: slow blink every ~1 second to show system is alive
+    // Useful when running on battery without USB serial monitor
+    led_counter++;
+    if (led_counter >= 20) {  // 20 * 50ms = 1 second
+        led_counter = 0;
+        // Quick blink
+        digitalWrite(LED_BUILTIN, LOW);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        digitalWrite(LED_BUILTIN, HIGH);
+    }
     
     // This delay ensures loop() doesn't consume CPU
     // In production, you might remove loop() entirely or use it for

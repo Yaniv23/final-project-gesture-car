@@ -93,7 +93,6 @@ graph TB
 graph TB
     subgraph VehicleController["🚗 ESP32 Vehicle Controller (FreeRTOS)"]
         subgraph HighPriority["🔴 High Priority Tasks"]
-            SafetyMonitor["Safety Monitor<br/>Priority 5 | 50ms<br/>━━━━━━━━━━━━━━━━<br/>• Watchdog monitoring<br/>• Emergency stop<br/>• Obstacle detection<br/>• Timeout monitoring"]
             MotorControl["Motor Control<br/>Priority 4 | 10ms<br/>━━━━━━━━━━━━━━━━<br/>• Command processing<br/>• Mode switching<br/>• Motion execution<br/>• PWM control"]
         end
         
@@ -125,7 +124,6 @@ graph TB
     ModeManager --> Autonomous
     MotorControl --> MotorDriver
     Autonomous --> CommandQueue
-    SafetyMonitor --> MotorDriver
     MotorDriver --> Motors
     Autonomous --> Servo
     Autonomous --> Ultrasonic
@@ -136,7 +134,7 @@ graph TB
     classDef hardware fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
     classDef comm fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:#000
     
-    class SafetyMonitor,MotorControl highPriority
+    class MotorControl highPriority
     class Autonomous,Communication mediumPriority
     class CommandQueue,ModeManager,MotorDriver shared
     class Motors,Servo,Ultrasonic hardware

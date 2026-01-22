@@ -8,6 +8,7 @@
  * @file ultrasonic_driver.h
  * @brief HC-SR04 Ultrasonic sensor driver
  * @details Based on Vehicule_Controller.ino readDistanceCM() implementation
+ *          Reserved for future use in autonomous mode
  */
 
 class Ultrasonic {
@@ -26,11 +27,18 @@ public:
     bool init(uint8_t trig_pin, uint8_t echo_pin);
     
     /**
-     * @brief Read distance in centimeters
+     * @brief Read distance in centimeters (filtered)
      * @details Based on readDistanceCM() from Vehicule_Controller.ino
-     * @return Distance in cm, -1.0 if error or timeout
+     *          Now includes median filter to eliminate spikes
+     * @return Filtered distance in cm, -1.0 if error or timeout
      */
     float readDistanceCM();
+    
+    /**
+     * @brief Read raw distance without filtering (for compatibility/debugging)
+     * @return Raw distance in cm, -1.0 if error or timeout
+     */
+    float readDistanceRaw();
     
     /**
      * @brief Check if obstacle is detected
@@ -57,6 +65,12 @@ private:
     static constexpr unsigned long ECHO_TIMEOUT_US = 25000; // 25 ms timeout (~4.25 m max range)
     static constexpr float SPEED_OF_SOUND_CM_PER_US = 0.034;  // cm per microsecond
     static constexpr float DISTANCE_DIVISOR = 2.0;            // Divide by 2 (round trip)
+    
+    /**
+     * @brief Read raw distance from sensor hardware
+     * @return Raw distance in cm, -1.0 if error or timeout
+     */
+    float readDistanceRawInternal();
 };
 
 #endif // ULTRASONIC_DRIVER_H

@@ -50,13 +50,7 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
         // Memory barrier to ensure write completes before flag is set
         __sync_synchronize();
         sender_mac_known = true;
-        // Note: Serial.print in ISR is not ideal but acceptable for one-time debug output
-        Serial.print("[ESP-NOW] Learned sender MAC: ");
-        char macStr[18];
-        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 sender_mac[0], sender_mac[1], sender_mac[2],
-                 sender_mac[3], sender_mac[4], sender_mac[5]);
-        Serial.println(macStr);
+        // Sender MAC learned (one-time event)
     }
     
     // Always queue the received data for debugging, regardless of length
@@ -80,6 +74,9 @@ void onESPNowReceive(const uint8_t *mac_addr, const uint8_t *data, int len) {
     }
 }
 
+// ESP-NOW WiFi channel - MUST match on both sender and vehicle
+#define ESPNOW_WIFI_CHANNEL 1
+
 bool espnow_init(bool simulation_mode) {
     // In simulation mode, skip WiFi initialization entirely (non-blocking)
     if (simulation_mode) {
@@ -97,12 +94,20 @@ bool espnow_init(bool simulation_mode) {
     WiFi.disconnect();  // Disconnect from any previous connection
     delay(200);  // Give WiFi time to initialize
     
+    // Force WiFi channel - CRITICAL for ESP-NOW reliability
+    // Both sender and vehicle MUST be on the same channel
+    esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    Serial.print("[ESP-NOW] WiFi channel set to: ");
+    Serial.println(ESPNOW_WIFI_CHANNEL);
+    
     // Print MAC address using esp_wifi_get_mac (matching Vehicule_Controller.ino)
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    Serial.print("[ESP-NOW] Vehicle MAC: ");
+    Serial.println(macStr);
     
     // Initialize ESP-NOW (idempotent - can be called multiple times)
     esp_err_t init_result = esp_now_init();
@@ -117,6 +122,7 @@ bool espnow_init(bool simulation_mode) {
     // Register receive callback (idempotent - can be called multiple times)
     esp_now_register_recv_cb(onESPNowReceive);
     
+    Serial.println("[ESP-NOW] ✅ Initialized successfully");
     return true;
 }
 
@@ -127,7 +133,6 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
 
     // Check if sender MAC is known (read volatile flag)
     if (!sender_mac_known) {
-        Serial.println("[ESP-NOW] Cannot send: sender MAC unknown (no packets received yet)");
         return false;
     }
 
@@ -142,13 +147,11 @@ bool espnow_send_bytes(const uint8_t* data, size_t len) {
     if (!sender_peer_added) {
         esp_now_peer_info_t peerInfo = {};
         memcpy(peerInfo.peer_addr, local_mac, 6);
-        peerInfo.channel = 0;      // Use current WiFi channel
+        peerInfo.channel = ESPNOW_WIFI_CHANNEL;  // Use fixed channel for reliability
         peerInfo.encrypt = false;  // No encryption for now
 
         esp_err_t peer_err = esp_now_add_peer(&peerInfo);
         if (peer_err != ESP_OK && peer_err != ESP_ERR_ESPNOW_EXIST) {
-            Serial.print("[ESP-NOW] Failed to add sender as peer, error: ");
-            Serial.println(peer_err);
             return false;
         }
         sender_peer_added = true;
@@ -168,6 +171,13 @@ bool espnow_send_handshake_ack(uint8_t status_byte) {
     uint8_t frame[2];
     frame[0] = CMD_HANDSHAKE_ACK;
     frame[1] = status_byte;
+    return espnow_send_bytes(frame, sizeof(frame));
+}
+
+bool espnow_send_mode_status(uint8_t mode) {
+    uint8_t frame[2];
+    frame[0] = CMD_MODE_STATUS;
+    frame[1] = mode;  // 0 = MODE_MANUAL, 1 = MODE_AUTONOMOUS
     return espnow_send_bytes(frame, sizeof(frame));
 }
 
@@ -196,33 +206,12 @@ bool espnow_wait_for_connection(uint32_t timeout_ms) {
     espnow_connected = false;
     
     uint32_t start_time = millis();
-    uint32_t last_status_time = start_time;
-    const uint32_t status_interval_ms = 2000;  // Print status every 2 seconds
-    
-    Serial.println("[ESP-NOW] Waiting for connection from sender...");
     
     while (millis() - start_time < timeout_ms) {
         if (espnow_connected) {
-            Serial.println("[ESP-NOW] ✓ Connection established!");
             return true;
         }
-        
-        // Print status updates periodically
-        uint32_t current_time = millis();
-        if (current_time - last_status_time >= status_interval_ms) {
-            uint32_t elapsed = current_time - start_time;
-            uint32_t remaining = (timeout_ms > elapsed) ? (timeout_ms - elapsed) : 0;
-            Serial.print("[ESP-NOW] Waiting... (");
-            Serial.print(elapsed / 1000);
-            Serial.print("s elapsed, ");
-            Serial.print(remaining / 1000);
-            Serial.println("s remaining)");
-            last_status_time = current_time;
-        }
-        
         delay(100);  // Poll every 100ms
     }
-    
-    Serial.println("[ESP-NOW] ✗ Connection timeout - no message received");
     return false;
 }

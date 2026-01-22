@@ -30,6 +30,7 @@ ServoDriver::ServoDriver()
     , sweeping_(false)
     , sweep_resting_(false)
     , rest_interval_ms_(DEFAULT_REST_INTERVAL_MS)
+    , last_angle_change_ms_(0)
 {
 }
 
@@ -47,13 +48,6 @@ bool ServoDriver::init(uint8_t pin) {
     
     // Set initial position to min angle
     setAngle(min_angle_);
-    
-    Serial.print("[ServoDriver] Initialized on pin ");
-    Serial.print(pin);
-    Serial.print(" using LEDC channel ");
-    Serial.print(ledc_channel_);
-    Serial.print(" (motors use channels 0-3)");
-    Serial.println();
     
     return true;
 }
@@ -78,7 +72,7 @@ uint32_t ServoDriver::angleToDuty(int angle) {
     return (pulse_us * max_duty) / period_us;
 }
 
-void ServoDriver::setAngle(int angle) {
+void ServoDriver::setAngle(int angle, bool wait_for_stable) {
     if (!initialized_) {
         return;
     }
@@ -87,11 +81,20 @@ void ServoDriver::setAngle(int angle) {
     if (angle < 0) angle = 0;
     if (angle > 180) angle = 180;
     
-    current_angle_ = angle;
-    
-    // Convert angle to PWM duty cycle and write to LEDC
-    uint32_t duty = angleToDuty(angle);
-    ledcWrite(ledc_channel_, duty);
+    // Check if angle actually changed
+    if (angle != current_angle_) {
+        current_angle_ = angle;
+        last_angle_change_ms_ = millis();
+        
+        // Convert angle to PWM duty cycle and write to LEDC
+        uint32_t duty = angleToDuty(angle);
+        ledcWrite(ledc_channel_, duty);
+        
+        // If wait_for_stable is true, block until servo is stable
+        if (wait_for_stable) {
+            delay(SERVO_STABILIZATION_MS);
+        }
+    }
 }
 
 void ServoDriver::startSweep(int min_angle, int max_angle, int step_deg, unsigned long interval_ms, unsigned long rest_interval_ms) {
@@ -164,4 +167,16 @@ void ServoDriver::stopSweep() {
 
 int ServoDriver::getCurrentAngle() const {
     return current_angle_;
+}
+
+bool ServoDriver::isStable() const {
+    if (!initialized_) {
+        return false;
+    }
+    
+    unsigned long now = millis();
+    unsigned long time_since_change = now - last_angle_change_ms_;
+    
+    // Servo is stable if it hasn't moved for SERVO_STABILIZATION_MS
+    return (time_since_change >= SERVO_STABILIZATION_MS);
 }

@@ -43,6 +43,17 @@ bool espnow_send_bytes(const uint8_t* data, size_t len);
 bool espnow_send_handshake_ack(uint8_t status_byte);
 
 /**
+ * @brief Send current mode status to sender
+ *
+ * Frame format: { CMD_MODE_STATUS, mode_byte }
+ * mode_byte: 0 = MODE_MANUAL, 1 = MODE_AUTONOMOUS
+ *
+ * @param mode Current driving mode (0 or 1)
+ * @return true if the frame was queued for transmission, false otherwise
+ */
+bool espnow_send_mode_status(uint8_t mode);
+
+/**
  * @brief Get MAC address as string (for debugging)
  * @param mac_str Output buffer (must be at least 18 bytes)
  * @return true if successful

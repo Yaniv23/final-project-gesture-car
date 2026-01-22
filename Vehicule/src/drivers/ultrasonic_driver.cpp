@@ -30,7 +30,7 @@ bool Ultrasonic::init(uint8_t trig_pin, uint8_t echo_pin) {
     return true;
 }
 
-float Ultrasonic::readDistanceCM() {
+float Ultrasonic::readDistanceRawInternal() {
     if (!initialized_) {
         return -1.0;
     }
@@ -56,13 +56,31 @@ float Ultrasonic::readDistanceCM() {
     // Divide by 2 because sound travels to object and back
     if (duration > 0) {
         float distance = (duration * SPEED_OF_SOUND_CM_PER_US) / DISTANCE_DIVISOR;
-        last_distance_ = distance;
         return distance;
     } else {
         // Timeout or error
+        return -1.0;
+    }
+}
+
+float Ultrasonic::readDistanceCM() {
+    // Read raw distance from sensor
+    float raw_distance = readDistanceRawInternal();
+    
+    // Update last_distance_ with raw value if valid
+    if (raw_distance >= 0.0f && raw_distance <= 400.0f) {
+        last_distance_ = raw_distance;
+        return raw_distance;
+    } else {
         last_distance_ = -1.0;
         return -1.0;
     }
+}
+
+float Ultrasonic::readDistanceRaw() {
+    float raw = readDistanceRawInternal();
+    last_distance_ = raw;
+    return raw;
 }
 
 bool Ultrasonic::isObstacle(float threshold_cm) {

@@ -17,8 +17,6 @@ ModeManager::ModeManager()
 ModeManager& ModeManager::getInstance() {
     if (instance_ == nullptr) {
         instance_ = new ModeManager();
-        // Log initial mode (Serial should be ready by the time this is called)
-        Serial.println("[MODE] ModeManager initialized - Default mode: MANUAL");
     }
     return *instance_;
 }
