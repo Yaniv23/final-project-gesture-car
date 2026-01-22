@@ -26,7 +26,7 @@
 #define BACK_LEFT_IN1      21  // Direction pin 1
 #define BACK_LEFT_IN2      22  // Direction pin 2
 
-// Servo Motor (reserved for future use)
+// Servo Motor
 #define SERVO_PIN          4
 #define SERVO_LEDC_CHANNEL 4
 #define SERVO_FREQUENCY    50   // 50 Hz standard servo
@@ -35,9 +35,11 @@
 #define SERVO_MAX_PULSE_US 2500 // 2.5ms pulse for 180 degrees
 #define SERVO_STABILIZATION_MS 200  // Servo stabilization delay in milliseconds
 
-// Ultrasonic Sensor (reserved for future use)
-#define ULTRASONIC_TRIG    12
-#define ULTRASONIC_ECHO    16
+// Ultrasonic Sensors (front + rear)
+#define ULTRASONIC_TRIG        12  // Front trigger
+#define ULTRASONIC_ECHO        16  // Front echo (input only OK)
+#define ULTRASONIC_TRIG_REAR   17  // Rear trigger (spare GPIO)
+#define ULTRASONIC_ECHO_REAR   34  // Rear echo (input-only pin)
 
 // ============================================================================
 // Motor Speed Constants

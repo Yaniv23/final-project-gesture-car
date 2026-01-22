@@ -1,2 +1,0 @@
-Avant d arranger la strcture j aimerais aouter une bouvelle feature . On a mainteneant un mode de conduite qui est manual (utilisateur envoi des commandes a la voiture ) j aimereais implement un second mode de conduite qui soit "autonome" juste en utilisant des capteur ultrasonic a l arrire et a l avant 
-Les capteurs ne seront pas utiliser dans le mode manual , ils seront utliser que dans le mode automatique . j ai aussi un capteur MPU si ca peut aider a l implementation 
