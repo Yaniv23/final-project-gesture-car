@@ -34,25 +34,6 @@ public:
      */
     float readDistanceCM();
     
-    /**
-     * @brief Read raw distance without filtering (for compatibility/debugging)
-     * @return Raw distance in cm, -1.0 if error or timeout
-     */
-    float readDistanceRaw();
-    
-    /**
-     * @brief Check if obstacle is detected
-     * @param threshold_cm Distance threshold in cm (default 20cm)
-     * @return true if obstacle detected (distance < threshold and > 0)
-     */
-    bool isObstacle(float threshold_cm = 20.0);
-    
-    /**
-     * @brief Get last measured distance
-     * @return Last distance reading in cm
-     */
-    float getLastDistance() const;
-    
 private:
     uint8_t trig_pin_;
     uint8_t echo_pin_;

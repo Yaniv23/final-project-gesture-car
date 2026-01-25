@@ -178,7 +178,7 @@ void setup() {
         "Autonomous",
         AUTONOMOUS_TASK_STACK_SIZE,
         NULL,
-        AUTONOMOUS_TASK_PRIORITY,
+        TASK_PRIORITY_AUTONOMOUS,
         &taskHandle_autonomous
     );
     Serial.println("[SETUP] Created task: Autonomous (Priority 3)");

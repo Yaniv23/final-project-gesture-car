@@ -77,25 +77,4 @@ float Ultrasonic::readDistanceCM() {
     }
 }
 
-float Ultrasonic::readDistanceRaw() {
-    float raw = readDistanceRawInternal();
-    last_distance_ = raw;
-    return raw;
-}
-
-bool Ultrasonic::isObstacle(float threshold_cm) {
-    float distance = readDistanceCM();
-    
-    // Check if obstacle detected (matching Vehicule_Controller.ino logic)
-    // if (lastDistanceCm > 0 && lastDistanceCm < OBSTACLE_DISTANCE_CM)
-    if (distance > 0.0 && distance < threshold_cm) {
-        return true;
-    }
-    
-    return false;
-}
-
-float Ultrasonic::getLastDistance() const {
-    return last_distance_;
-}
 

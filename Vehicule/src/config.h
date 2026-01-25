@@ -56,7 +56,6 @@
 // Task Priorities (higher number = higher priority)
 #define TASK_PRIORITY_MOTOR_CONTROL     4  // Highest - real-time motor control
 #define TASK_PRIORITY_AUTONOMOUS        3  // Medium - autonomous navigation
-#define AUTONOMOUS_TASK_PRIORITY       3  // Alias for TASK_PRIORITY_AUTONOMOUS
 #define TASK_PRIORITY_COMMUNICATION     2  // Lower - command handling
 
 // Task Periods (milliseconds)

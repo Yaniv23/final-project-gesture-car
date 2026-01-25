@@ -83,10 +83,10 @@ void task_autonomous(void *pvParameters) {
     // - Compatible with HC-SR04 sensor timing (max 25ms measurement time)
     // - Provides good safety margin for obstacle detection
     const TickType_t forward_delay = pdMS_TO_TICKS(60);
-    const TickType_t backup_step = pdMS_TO_TICKS(60);
-    const TickType_t backup_total = pdMS_TO_TICKS(500);
-    const TickType_t turn_window = pdMS_TO_TICKS(400);
-    const TickType_t rotate_recovery = pdMS_TO_TICKS(500);
+    const TickType_t backup_step = pdMS_TO_TICKS(100);
+    const TickType_t backup_total = pdMS_TO_TICKS(900);
+    const TickType_t turn_window = pdMS_TO_TICKS(800);
+    const TickType_t rotate_recovery = pdMS_TO_TICKS(800);
 
     while (1) {
         if (!mode_mgr.isAutonomousMode()) {
@@ -144,8 +144,11 @@ void task_autonomous(void *pvParameters) {
 
         // Stuck recovery if all sides blocked
         int recovery_attempts = 0;
-        while (max_distance <= 30.0f && recovery_attempts < 3) {
-            sendMotionCommand(CMD_ROTATE_CCW);
+        //choose cmd random between CMD_ROTATE_CCW and CMD_ROTATE_CW
+        uint8_t cmd = random(0, 2);
+        uint8_t rotate_cmd = (cmd == 0) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+        while (max_distance <= 40.0f && recovery_attempts < 3) {
+            sendMotionCommand(rotate_cmd);
             vTaskDelay(rotate_recovery);
             sendMotionCommand(CMD_STOP);
 
@@ -154,7 +157,7 @@ void task_autonomous(void *pvParameters) {
             recovery_attempts++;
         }
 
-        if (max_distance <= 30.0f) {
+        if (max_distance <= 40.0f) {
             Serial.println("[AUTO] Stuck: no clear path after recovery attempts");
             sendMotionCommand(CMD_STOP);
             continue;

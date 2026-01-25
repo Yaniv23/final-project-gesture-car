@@ -103,6 +103,7 @@ bool espnow_init(bool simulation_mode) {
     delay(500);  // Increased from 200ms for better battery compatibility
     
     // Verify WiFi is ready before proceeding
+    uint8_t mac[6];
     esp_err_t mac_result = esp_wifi_get_mac(WIFI_IF_STA, mac);
     if (mac_result != ESP_OK) {
         Serial.println("[WARNING] WiFi may not be fully initialized");
