@@ -78,8 +78,12 @@ void task_autonomous(void *pvParameters) {
 
     bool init_logged = false;
 
-    const TickType_t forward_delay = pdMS_TO_TICKS(100);
-    const TickType_t backup_step = pdMS_TO_TICKS(50);
+    // Measurement intervals: 60ms provides ~16.7 Hz sampling rate
+    // - Optimal balance between reactivity and CPU load
+    // - Compatible with HC-SR04 sensor timing (max 25ms measurement time)
+    // - Provides good safety margin for obstacle detection
+    const TickType_t forward_delay = pdMS_TO_TICKS(60);
+    const TickType_t backup_step = pdMS_TO_TICKS(60);
     const TickType_t backup_total = pdMS_TO_TICKS(500);
     const TickType_t turn_window = pdMS_TO_TICKS(400);
     const TickType_t rotate_recovery = pdMS_TO_TICKS(500);

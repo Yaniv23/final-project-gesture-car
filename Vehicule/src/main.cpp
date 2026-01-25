@@ -213,23 +213,23 @@ void loop() {
     // In a FreeRTOS setup, loop() should not contain blocking code
     // All work is done in tasks created in setup()
     
-    // Feed watchdog timer (safety mechanism)
-    watchdog_feed();
+    // // Feed watchdog timer (safety mechanism)
+    // watchdog_feed();
     
-    // Visual heartbeat: slow blink every ~1 second to show system is alive
-    // Useful when running on battery without USB serial monitor
-    led_counter++;
-    if (led_counter >= 20) {  // 20 * 50ms = 1 second
-        led_counter = 0;
-        // Quick blink
-        digitalWrite(LED_BUILTIN, LOW);
-        vTaskDelay(pdMS_TO_TICKS(50));
-        digitalWrite(LED_BUILTIN, HIGH);
-    }
+    // // Visual heartbeat: slow blink every ~1 second to show system is alive
+    // // Useful when running on battery without USB serial monitor
+    // led_counter++;
+    // if (led_counter >= 20) {  // 20 * 50ms = 1 second
+    //     led_counter = 0;
+    //     // Quick blink
+    //     digitalWrite(LED_BUILTIN, LOW);
+    //     vTaskDelay(pdMS_TO_TICKS(50));
+    //     digitalWrite(LED_BUILTIN, HIGH);
+    // }
     
-    // This delay ensures loop() doesn't consume CPU
-    // In production, you might remove loop() entirely or use it for
-    // low-priority background tasks
-    vTaskDelay(pdMS_TO_TICKS(50));
+    // // This delay ensures loop() doesn't consume CPU
+    // // In production, you might remove loop() entirely or use it for
+    // // low-priority background tasks
+    // vTaskDelay(pdMS_TO_TICKS(50));
     
 }
