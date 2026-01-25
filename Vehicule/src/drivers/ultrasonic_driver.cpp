@@ -12,7 +12,12 @@ Ultrasonic::Ultrasonic()
     , echo_pin_(0)
     , initialized_(false)
     , last_distance_(-1.0)
+    , buffer_index_(0)
+    , valid_samples_count_(0)
+    , last_filtered_distance_(-1.0f)
 {
+    // Initialize filter buffer with invalid values
+    distance_buffer_.fill(-1.0f);
 }
 
 bool Ultrasonic::init(uint8_t trig_pin, uint8_t echo_pin) {
@@ -26,6 +31,12 @@ bool Ultrasonic::init(uint8_t trig_pin, uint8_t echo_pin) {
     
     initialized_ = true;
     last_distance_ = -1.0;
+    
+    // Reset filter state
+    buffer_index_ = 0;
+    valid_samples_count_ = 0;
+    last_filtered_distance_ = -1.0f;
+    distance_buffer_.fill(-1.0f);
     
     return true;
 }
@@ -64,17 +75,64 @@ float Ultrasonic::readDistanceRawInternal() {
 }
 
 float Ultrasonic::readDistanceCM() {
-    // Read raw distance from sensor
+    // 1. Read raw distance from sensor hardware
     float raw_distance = readDistanceRawInternal();
     
-    // Update last_distance_ with raw value if valid
-    if (raw_distance >= 0.0f && raw_distance <= 400.0f) {
-        last_distance_ = raw_distance;
-        return raw_distance;
-    } else {
-        last_distance_ = -1.0;
-        return -1.0;
+    // 2. If value is invalid (< 0 or > 400cm), return -1 immediately
+    if (raw_distance < 0.0f || raw_distance > 400.0f) {
+        last_distance_ = -1.0f;
+        return -1.0f;
     }
+    
+    // 3. Calculate current average (if buffer has valid samples)
+    float current_avg = (valid_samples_count_ > 0) 
+                        ? calculateAverage() 
+                        : raw_distance;
+    
+    // 4. Validate new value (reject spikes if we have enough samples)
+    if (valid_samples_count_ >= 2) {  // Need at least 2 samples to compare
+        if (!isValidSample(raw_distance, current_avg)) {
+            // Spike detected - reject and return last filtered value
+            return last_filtered_distance_;
+        }
+    }
+    
+    // 5. Add valid value to circular buffer
+    distance_buffer_[buffer_index_] = raw_distance;
+    buffer_index_ = (buffer_index_ + 1) % FILTER_BUFFER_SIZE;
+    
+    // 6. Update valid samples count
+    if (valid_samples_count_ < FILTER_BUFFER_SIZE) {
+        valid_samples_count_++;
+    }
+    
+    // 7. Calculate new filtered average
+    float filtered_distance = calculateAverage();
+    
+    // 8. Update state
+    last_distance_ = raw_distance;
+    last_filtered_distance_ = filtered_distance;
+    
+    return filtered_distance;
+}
+
+float Ultrasonic::calculateAverage() const {
+    if (valid_samples_count_ == 0) {
+        return -1.0f;
+    }
+    
+    float sum = 0.0f;
+    for (size_t i = 0; i < valid_samples_count_; ++i) {
+        sum += distance_buffer_[i];
+    }
+    
+    return sum / valid_samples_count_;
+}
+
+bool Ultrasonic::isValidSample(float raw, float current_avg) const {
+    // Reject if deviation from average exceeds threshold (spike detection)
+    float deviation = (raw > current_avg) ? (raw - current_avg) : (current_avg - raw);
+    return deviation <= MAX_DEVIATION_CM;
 }
 
 

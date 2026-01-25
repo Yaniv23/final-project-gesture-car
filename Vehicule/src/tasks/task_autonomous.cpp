@@ -27,31 +27,115 @@ void sendMotionCommand(uint8_t cmd) {
 }
 
 // Three-position scan: left (30°), center (90°), right (150°)
+// Improved: Multiple readings per position to ensure valid data, especially for center
 std::array<float, 3> scanThreeDirections(ServoDriver& servo, Ultrasonic& sensor) {
     const int angles[3] = {30, 90, 150};
     std::array<float, 3> distances = {-1.0f, -1.0f, -1.0f};
+    
+    // Number of readings per position (same for all angles for consistency)
+    const int readings_per_position = 7;  // 7 readings for each angle (Left, Center, Right)
+    const TickType_t stabilization_delay = pdMS_TO_TICKS(250);  // Wait for servo to stabilize
+    const TickType_t reading_interval = pdMS_TO_TICKS(80);       // Interval between readings
 
     for (int i = 0; i < 3; ++i) {
-        servo.setAngle(angles[i]);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        distances[i] = sensor.readDistanceCM();
+        // Move servo to position and wait for stabilization
+        servo.setAngle(angles[i], false);  // Non-blocking
+        vTaskDelay(stabilization_delay);
+        
+        // Verify servo is stable (optional check)
+        // Note: isStable() uses millis() which may not be accurate in FreeRTOS
+        // The delay above should be sufficient
+        
+        // Take multiple readings for this position
+        float sum = 0.0f;
+        int valid_readings = 0;
+        float min_distance = 400.0f;
+        float max_distance = 0.0f;
+        
+        for (int reading = 0; reading < readings_per_position; ++reading) {
+            float distance = sensor.readDistanceCM();
+            
+            // Only count valid readings (0 < distance < 400)
+            if (distance > 0.0f && distance < 400.0f) {
+                sum += distance;
+                valid_readings++;
+                if (distance < min_distance) min_distance = distance;
+                if (distance > max_distance) max_distance = distance;
+            }
+            
+            // Small delay between readings to allow sensor to settle
+            if (reading < readings_per_position - 1) {
+                vTaskDelay(reading_interval);
+            }
+        }
+        
+        // Calculate average of valid readings
+        if (valid_readings > 0) {
+            distances[i] = sum / valid_readings;
+            
+            // Debug: Log if any position has issues (not enough valid readings)
+            if (valid_readings < readings_per_position) {
+                const char* pos_names[3] = {"Left", "Center", "Right"};
+                Serial.print("[SCAN] ");
+                Serial.print(pos_names[i]);
+                Serial.print(": only ");
+                Serial.print(valid_readings);
+                Serial.print("/");
+                Serial.print(readings_per_position);
+                Serial.println(" valid readings");
+            }
+        } else {
+            // No valid readings - keep -1.0f
+            const char* pos_names[3] = {"Left", "Center", "Right"};
+            Serial.print("[SCAN] ");
+            Serial.print(pos_names[i]);
+            Serial.println(": NO valid readings!");
+        }
     }
 
     // Return servo to center for the next cycle
-    servo.setAngle(90);
+    servo.setAngle(90, false);
     return distances;
 }
 
 // Pick index of the longest clear direction (0 = left, 1 = center, 2 = right)
+// Improved: Better handling of invalid values, ensures center is considered
 int pickBestDirection(const std::array<float, 3>& distances, float& max_distance) {
-    int best = 0;
-    max_distance = distances[0];
-    for (int i = 1; i < 3; ++i) {
-        if (distances[i] > max_distance) {
-            max_distance = distances[i];
-            best = i;
+    // Find the best valid direction
+    int best = -1;
+    max_distance = -1.0f;
+    
+    // Check all three directions
+    for (int i = 0; i < 3; ++i) {
+        // Only consider valid distances (> 0 and < 400)
+        if (distances[i] > 0.0f && distances[i] < 400.0f) {
+            if (distances[i] > max_distance) {
+                max_distance = distances[i];
+                best = i;
+            }
         }
     }
+    
+    // If no valid direction found, default to center (index 1)
+    if (best < 0) {
+        best = 1;  // Default to center
+        max_distance = -1.0f;
+        Serial.println("[PICK] No valid directions found, defaulting to center");
+    }
+    
+    // Debug: Log the chosen direction
+    const char* dir_names[3] = {"LEFT", "CENTER", "RIGHT"};
+    Serial.print("[PICK] Best: ");
+    Serial.print(dir_names[best]);
+    Serial.print(" (");
+    Serial.print(max_distance);
+    Serial.print(" cm) - L:");
+    Serial.print(distances[0]);
+    Serial.print(" C:");
+    Serial.print(distances[1]);
+    Serial.print(" R:");
+    Serial.println(distances[2]);
+    
     return best;
 }
 
@@ -85,8 +169,11 @@ void task_autonomous(void *pvParameters) {
     const TickType_t forward_delay = pdMS_TO_TICKS(60);
     const TickType_t backup_step = pdMS_TO_TICKS(100);
     const TickType_t backup_total = pdMS_TO_TICKS(900);
-    const TickType_t turn_window = pdMS_TO_TICKS(800);
-    const TickType_t rotate_recovery = pdMS_TO_TICKS(800);
+    const TickType_t turn_window = pdMS_TO_TICKS(1500);
+    const TickType_t rotate_recovery = pdMS_TO_TICKS(1500);
+
+    // Track current rotation direction for scan recovery
+    uint8_t current_rotate_cmd = CMD_ROTATE_CW;  // Default to CW
 
     while (1) {
         if (!mode_mgr.isAutonomousMode()) {
@@ -110,6 +197,7 @@ void task_autonomous(void *pvParameters) {
         sendMotionCommand(CMD_FORWARD);
         vTaskDelay(forward_delay);
 
+        // Read filtered distance (filtering applied automatically)
         float front_distance = front_sensor.readDistanceCM();
         bool obstacleDetected = (front_distance > 0.0f && front_distance < 20.0f);
         if (!obstacleDetected) {
@@ -143,11 +231,49 @@ void task_autonomous(void *pvParameters) {
         int best_dir = pickBestDirection(distances, max_distance);
 
         // Stuck recovery if all sides blocked
+        // Continue in current direction (CW/CCW) where distance is largest
         int recovery_attempts = 0;
-        //choose cmd random between CMD_ROTATE_CCW and CMD_ROTATE_CW
-        uint8_t cmd = random(0, 2);
-        uint8_t rotate_cmd = (cmd == 0) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
         while (max_distance <= 40.0f && recovery_attempts < 3) {
+            // Find direction with largest distance
+            int max_dir = -1;
+            float max_dist = -1.0f;
+            for (int i = 0; i < 3; ++i) {
+                if (distances[i] > 0.0f && distances[i] < 400.0f && distances[i] > max_dist) {
+                    max_dist = distances[i];
+                    max_dir = i;
+                }
+            }
+            
+            // Determine rotation direction based on largest distance
+            // Left (0) -> CCW, Right (2) -> CW, Center (1) -> keep current direction
+            uint8_t rotate_cmd;
+            if (max_dir == 0) {
+                // Left has largest distance -> rotate CCW
+                rotate_cmd = CMD_ROTATE_CCW;
+            } else if (max_dir == 2) {
+                // Right has largest distance -> rotate CW
+                rotate_cmd = CMD_ROTATE_CW;
+            } else {
+                // Center has largest distance or no valid direction -> continue current direction
+                rotate_cmd = current_rotate_cmd;
+            }
+            
+            // Update current rotation direction
+            current_rotate_cmd = rotate_cmd;
+            
+            Serial.print("[SCAN] All directions blocked, continuing ");
+            Serial.print((rotate_cmd == CMD_ROTATE_CW) ? "CW" : "CCW");
+            Serial.print(" (max distance: ");
+            Serial.print(max_dist);
+            Serial.print(" cm at ");
+            const char* dir_names[3] = {"LEFT", "CENTER", "RIGHT"};
+            if (max_dir >= 0) {
+                Serial.print(dir_names[max_dir]);
+            } else {
+                Serial.print("NONE");
+            }
+            Serial.println(")");
+            
             sendMotionCommand(rotate_cmd);
             vTaskDelay(rotate_recovery);
             sendMotionCommand(CMD_STOP);
@@ -165,10 +291,12 @@ void task_autonomous(void *pvParameters) {
 
         // Execute chosen direction
         if (best_dir == 0) {
+            current_rotate_cmd = CMD_ROTATE_CCW;
             sendMotionCommand(CMD_ROTATE_CCW);
             vTaskDelay(turn_window);
             sendMotionCommand(CMD_STOP);
         } else if (best_dir == 2) {
+            current_rotate_cmd = CMD_ROTATE_CW;
             sendMotionCommand(CMD_ROTATE_CW);
             vTaskDelay(turn_window);
             sendMotionCommand(CMD_STOP);

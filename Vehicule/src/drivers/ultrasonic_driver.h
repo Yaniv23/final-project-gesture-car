@@ -3,12 +3,14 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <cstddef>
+#include <array>
 
 /**
  * @file ultrasonic_driver.h
- * @brief HC-SR04 Ultrasonic sensor driver
+ * @brief HC-SR04 Ultrasonic sensor driver with filtering
  * @details Based on Vehicule_Controller.ino readDistanceCM() implementation
- *          Reserved for future use in autonomous mode
+ *          Includes moving average filter to eliminate noise and spikes
  */
 
 class Ultrasonic {
@@ -29,7 +31,8 @@ public:
     /**
      * @brief Read distance in centimeters (filtered)
      * @details Based on readDistanceCM() from Vehicule_Controller.ino
-     *          Now includes median filter to eliminate spikes
+     *          Now includes moving average filter to eliminate spikes and noise
+     *          Uses 5-sample buffer with spike detection (max deviation 50cm)
      * @return Filtered distance in cm, -1.0 if error or timeout
      */
     float readDistanceCM();
@@ -47,11 +50,35 @@ private:
     static constexpr float SPEED_OF_SOUND_CM_PER_US = 0.034;  // cm per microsecond
     static constexpr float DISTANCE_DIVISOR = 2.0;            // Divide by 2 (round trip)
     
+    // Filter constants
+    static constexpr size_t FILTER_BUFFER_SIZE = 5;          // 5-sample moving average
+    static constexpr float MAX_DEVIATION_CM = 50.0f;         // Max deviation to reject spike
+    
+    // Filter state
+    std::array<float, FILTER_BUFFER_SIZE> distance_buffer_;
+    size_t buffer_index_;
+    size_t valid_samples_count_;
+    float last_filtered_distance_;
+    
     /**
      * @brief Read raw distance from sensor hardware
      * @return Raw distance in cm, -1.0 if error or timeout
      */
     float readDistanceRawInternal();
+    
+    /**
+     * @brief Calculate average of valid samples in buffer
+     * @return Average distance in cm, -1.0 if no valid samples
+     */
+    float calculateAverage() const;
+    
+    /**
+     * @brief Validate if sample is within acceptable deviation
+     * @param raw Raw distance value
+     * @param current_avg Current average of buffer
+     * @return true if sample is valid (not a spike)
+     */
+    bool isValidSample(float raw, float current_avg) const;
 };
 
 #endif // ULTRASONIC_DRIVER_H
