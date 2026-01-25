@@ -170,7 +170,7 @@ void task_autonomous(void *pvParameters) {
     const TickType_t backup_step = pdMS_TO_TICKS(100);
     const TickType_t backup_total = pdMS_TO_TICKS(900);
     const TickType_t turn_window = pdMS_TO_TICKS(1500);
-    const TickType_t rotate_recovery = pdMS_TO_TICKS(1500);
+    const TickType_t rotate_recovery = pdMS_TO_TICKS(800);
 
     // Track current rotation direction for scan recovery
     uint8_t current_rotate_cmd = CMD_ROTATE_CW;  // Default to CW
