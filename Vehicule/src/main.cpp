@@ -44,6 +44,7 @@
 void task_motor_control(void *pvParameters);
 void task_communication(void *pvParameters);
 void task_autonomous(void *pvParameters);
+void task_sensors(void *pvParameters);
 // REMOVED: void task_telemetry(void *pvParameters); - Telemetry disabled to fix command reception
 // REMOVED: void task_safety_monitor(void *pvParameters); - Safety monitor task not used
 
@@ -54,6 +55,7 @@ MotorDriver motor_driver;
 TaskHandle_t taskHandle_motor = NULL;
 TaskHandle_t taskHandle_comm = NULL;
 TaskHandle_t taskHandle_autonomous = NULL;
+TaskHandle_t taskHandle_sensors = NULL;
 // REMOVED: TaskHandle_t taskHandle_telemetry = NULL; - Telemetry disabled
 // REMOVED: TaskHandle_t taskHandle_safety = NULL; - Safety monitor task not used
 
@@ -119,13 +121,13 @@ void setup() {
     }
     Serial.println();
     
-    // Initialize shared queues and semaphores
-    Serial.println("[SETUP] Initializing shared queues...");
+    // Initialize shared queues, semaphores, and SensorState (used by Sensors + Autonomous tasks)
+    Serial.println("[SETUP] Initializing shared queues and SensorState...");
     if (!initSharedQueues()) {
-        Serial.println("[ERROR] Failed to initialize shared queues!");
+        Serial.println("[ERROR] Failed to initialize shared queues / SensorState!");
         while (1) delay(1000);  // Halt on error
     }
-    Serial.println("[SETUP] Shared queues initialized");
+    Serial.println("[SETUP] Shared queues and SensorState initialized");
     
     // Initialize MotorDriver with individual enable pins for each motor
     Serial.println("[SETUP] Initializing MotorDriver...");
@@ -172,6 +174,17 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: MotorControl (Priority 4)");
     
+    // Task 2: Sensors (Priority 3)
+    xTaskCreate(
+        task_sensors,
+        "Sensors",
+        TASK_STACK_SIZE_SENSORS,
+        NULL,
+        TASK_PRIORITY_SENSORS,
+        &taskHandle_sensors
+    );
+    Serial.println("[SETUP] Created task: Sensors (Priority 3)");
+    
     // Task 3: Autonomous (Priority 3)
     xTaskCreate(
         task_autonomous,
@@ -183,13 +196,14 @@ void setup() {
     );
     Serial.println("[SETUP] Created task: Autonomous (Priority 3)");
     
-    // Initialize ModeManager and confirm default mode
+    // Register task handles with ModeManager so it can suspend/resume Sensors and Autonomous on mode change
     ModeManager& mode_mgr = ModeManager::getInstance();
-    
-    // Suspend autonomous task since default mode is MANUAL
-    if (taskHandle_autonomous != NULL) {
-        vTaskSuspend(taskHandle_autonomous);
-    }
+    mode_mgr.registerTaskHandles(taskHandle_autonomous, taskHandle_sensors);
+
+    // Set default mode to AUTONOMOUS for testing
+    // ModeManager will keep Sensors and Autonomous tasks running (no suspend on first setMode)
+    mode_mgr.setMode(MODE_AUTONOMOUS);
+    Serial.println("[SETUP] Default mode: AUTONOMOUS (for testing)");
     
     // Task 5: Communication (Priority 2)
     xTaskCreate(

@@ -9,9 +9,9 @@
 #include <freertos/task.h>
 #include "../config.h"
 #include "../shared/queues.h"
+#include "../shared/sensor_state.h"
 #include "../communication/command_protocol.h"
 #include "../control/mode_manager.h"
-#include "../drivers/ultrasonic_driver.h"
 #include "../drivers/servo_driver.h"
 
 // External flag from main.cpp indicating setup is complete
@@ -26,66 +26,45 @@ void sendMotionCommand(uint8_t cmd) {
     }
 }
 
-// Three-position scan: left (30°), center (90°), right (150°)
-// Improved: Multiple readings per position to ensure valid data, especially for center
-std::array<float, 3> scanThreeDirections(ServoDriver& servo, Ultrasonic& sensor) {
-    const int angles[3] = {30, 90, 150};
+// Three-position scan order: 1st RIGHT (170°), 2nd CENTER (90°), 3rd LEFT (10°).
+// Indices: 0=right (best→CW), 1=center (best→forward), 2=left (best→CCW).
+// Reads raw from front sensor per direction and applies per-direction filter (no cross-direction state).
+std::array<float, 3> scanThreeDirections(ServoDriver& servo) {
+    const int angles[3] = {10, 90, 180};  // right, center, left
     std::array<float, 3> distances = {-1.0f, -1.0f, -1.0f};
-    
-    // Number of readings per position (same for all angles for consistency)
-    const int readings_per_position = 7;  // 7 readings for each angle (Left, Center, Right)
-    const TickType_t stabilization_delay = pdMS_TO_TICKS(250);  // Wait for servo to stabilize
-    const TickType_t reading_interval = pdMS_TO_TICKS(80);       // Interval between readings
+    constexpr int samples_per_direction = 20;
+    const TickType_t sample_interval = pdMS_TO_TICKS(SENSOR_READ_INTERVAL_MS);  // 60 ms
+    const TickType_t stabilization_delay = pdMS_TO_TICKS(SENSOR_READ_INTERVAL_MS);  // 60 ms after servo move
 
     for (int i = 0; i < 3; ++i) {
-        // Move servo to position and wait for stabilization
-        servo.setAngle(angles[i], false);  // Non-blocking
+        servo.setAngle(angles[i], false);
         vTaskDelay(stabilization_delay);
-        
-        // Verify servo is stable (optional check)
-        // Note: isStable() uses millis() which may not be accurate in FreeRTOS
-        // The delay above should be sufficient
-        
-        // Take multiple readings for this position
-        float sum = 0.0f;
-        int valid_readings = 0;
-        float min_distance = 400.0f;
-        float max_distance = 0.0f;
-        
-        for (int reading = 0; reading < readings_per_position; ++reading) {
-            float distance = sensor.readDistanceCM();
-            
-            // Only count valid readings (0 < distance < 400)
-            if (distance > 0.0f && distance < 400.0f) {
-                sum += distance;
-                valid_readings++;
-                if (distance < min_distance) min_distance = distance;
-                if (distance > max_distance) max_distance = distance;
-            }
-            
-            // Small delay between readings to allow sensor to settle
-            if (reading < readings_per_position - 1) {
-                vTaskDelay(reading_interval);
+
+        // Collect raw samples for this direction only (no filter state from other directions)
+        std::array<float, samples_per_direction> samples;
+        samples.fill(-1.0f);
+        for (int s = 0; s < samples_per_direction; ++s) {
+            vTaskDelay(sample_interval);
+            float raw = -1.0f;
+            if (readFrontSensorRaw(&raw)) {
+                samples[s] = raw;
             }
         }
-        
-        // Calculate average of valid readings
-        if (valid_readings > 0) {
-            distances[i] = sum / valid_readings;
-            
-            // Debug: Log if any position has issues (not enough valid readings)
-            if (valid_readings < readings_per_position) {
-                const char* pos_names[3] = {"Left", "Center", "Right"};
-                Serial.print("[SCAN] ");
-                Serial.print(pos_names[i]);
-                Serial.print(": only ");
-                Serial.print(valid_readings);
-                Serial.print("/");
-                Serial.print(readings_per_position);
-                Serial.println(" valid readings");
+
+        // Simple per-direction filter: average of valid in-range values (0 < d < 400 cm)
+        float sum = 0.0f;
+        int valid_count = 0;
+        for (int s = 0; s < samples_per_direction; ++s) {
+            float d = samples[s];
+            if (d > 0.0f && d < 400.0f) {
+                sum += d;
+                valid_count++;
             }
+        }
+
+        if (valid_count > 0) {
+            distances[i] = sum / valid_count;
         } else {
-            // No valid readings - keep -1.0f
             const char* pos_names[3] = {"Left", "Center", "Right"};
             Serial.print("[SCAN] ");
             Serial.print(pos_names[i]);
@@ -93,12 +72,11 @@ std::array<float, 3> scanThreeDirections(ServoDriver& servo, Ultrasonic& sensor)
         }
     }
 
-    // Return servo to center for the next cycle
     servo.setAngle(90, false);
     return distances;
 }
 
-// Pick index of the longest clear direction (0 = left, 1 = center, 2 = right)
+// Pick index of the longest clear direction (0 = right, 1 = center, 2 = left)
 // Improved: Better handling of invalid values, ensures center is considered
 int pickBestDirection(const std::array<float, 3>& distances, float& max_distance) {
     // Find the best valid direction
@@ -149,27 +127,20 @@ void task_autonomous(void *pvParameters) {
 
     ModeManager& mode_mgr = ModeManager::getInstance();
 
-    Ultrasonic front_sensor;
-    Ultrasonic rear_sensor;
     ServoDriver servo;
-
-    bool front_ok = front_sensor.init(ULTRASONIC_TRIG, ULTRASONIC_ECHO);
-    bool rear_ok = rear_sensor.init(ULTRASONIC_TRIG_REAR, ULTRASONIC_ECHO_REAR);
     bool servo_ok = servo.init(SERVO_PIN);
     if (servo_ok) {
         servo.setAngle(90, true);  // Center before starting
     }
 
-    bool init_logged = false;
+    bool init_logged = false;       // for "servo init failed" (once)
+    bool active_logged = false;    // for "autonomous active" (once)
 
-    // Measurement intervals: 60ms provides ~16.7 Hz sampling rate
-    // - Optimal balance between reactivity and CPU load
-    // - Compatible with HC-SR04 sensor timing (max 25ms measurement time)
-    // - Provides good safety margin for obstacle detection
-    const TickType_t forward_delay = pdMS_TO_TICKS(60);
+    // 60 ms step: matches task_sensors read interval; we consume getSensorState() only
+    const TickType_t forward_delay = pdMS_TO_TICKS(SENSOR_READ_INTERVAL_MS);
     const TickType_t backup_step = pdMS_TO_TICKS(100);
-    const TickType_t backup_total = pdMS_TO_TICKS(900);
-    const TickType_t turn_window = pdMS_TO_TICKS(1500);
+    const TickType_t backup_total = pdMS_TO_TICKS(800);
+    const TickType_t turn_window = pdMS_TO_TICKS(1200);
     const TickType_t rotate_recovery = pdMS_TO_TICKS(800);
 
     // Track current rotation direction for scan recovery
@@ -178,27 +149,41 @@ void task_autonomous(void *pvParameters) {
     while (1) {
         if (!mode_mgr.isAutonomousMode()) {
             init_logged = false;
+            active_logged = false;
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
-        if ((!front_ok || !rear_ok || !servo_ok) && !init_logged) {
-            Serial.println("[AUTO] Sensor/servo init failed - staying stopped");
+        if (!servo_ok && !init_logged) {
+            Serial.println("[AUTO] Servo init failed - staying stopped");
             init_logged = true;
             sendMotionCommand(CMD_STOP);
         }
 
-        if (!front_ok || !rear_ok || !servo_ok) {
+        if (!servo_ok) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
+        }
+
+        // Log once when autonomous is active with servo ready
+        if (!active_logged) {
+            active_logged = true;
+            Serial.println("[AUTO] Autonomous active (servo ready, using SensorState every 60 ms)");
         }
 
         // Baseline forward step
         sendMotionCommand(CMD_FORWARD);
         vTaskDelay(forward_delay);
 
-        // Read filtered distance (filtering applied automatically)
-        float front_distance = front_sensor.readDistanceCM();
+        // Read sensor state from shared structure (non-blocking)
+        SensorState sensor_state;
+        if (!getSensorState(&sensor_state)) {
+            // Failed to read sensor state - skip this iteration
+            continue;
+        }
+
+        // Check for obstacle using front distance from sensor state
+        float front_distance = sensor_state.front_distance;
         bool obstacleDetected = (front_distance > 0.0f && front_distance < 20.0f);
         if (!obstacleDetected) {
             continue;
@@ -213,10 +198,14 @@ void task_autonomous(void *pvParameters) {
         bool rear_blocked = false;
         while ((xTaskGetTickCount() - backup_start) < backup_total) {
             vTaskDelay(backup_step);
-            float rear_distance = rear_sensor.readDistanceCM();
-            if (rear_distance > 0.0f && rear_distance < 15.0f) {
-                rear_blocked = true;
-                break;
+            // Read sensor state during backup (non-blocking)
+            SensorState backup_sensor_state;
+            if (getSensorState(&backup_sensor_state)) {
+                float rear_distance = backup_sensor_state.rear_distance;
+                if (rear_distance > 0.0f && rear_distance < 15.0f) {
+                    rear_blocked = true;
+                    break;
+                }
             }
         }
         sendMotionCommand(CMD_STOP);
@@ -225,8 +214,8 @@ void task_autonomous(void *pvParameters) {
             Serial.println("[AUTO] Rear obstacle detected during backup");
         }
 
-        // Scan environment
-        std::array<float, 3> distances = scanThreeDirections(servo, front_sensor);
+        // Scan environment (uses getSensorState() only; task_sensors provides data every 60 ms)
+        std::array<float, 3> distances = scanThreeDirections(servo);
         float max_distance = 0.0f;
         int best_dir = pickBestDirection(distances, max_distance);
 
@@ -244,25 +233,29 @@ void task_autonomous(void *pvParameters) {
                 }
             }
             
-            // Determine rotation direction based on largest distance
-            // Left (0) -> CCW, Right (2) -> CW, Center (1) -> keep current direction
-            uint8_t rotate_cmd;
+            // Determine motion based on largest distance
+            // Right (0) -> CW, Center (1) -> forward, Left (2) -> CCW, none (-1) -> keep rotating to get unstuck
+            uint8_t motion_cmd;
             if (max_dir == 0) {
-                // Left has largest distance -> rotate CCW
-                rotate_cmd = CMD_ROTATE_CCW;
+                motion_cmd = CMD_ROTATE_CW;
+                current_rotate_cmd = CMD_ROTATE_CW;
             } else if (max_dir == 2) {
-                // Right has largest distance -> rotate CW
-                rotate_cmd = CMD_ROTATE_CW;
+                motion_cmd = CMD_ROTATE_CCW;
+                current_rotate_cmd = CMD_ROTATE_CCW;
+            } else if (max_dir == 1) {
+                // Center has largest distance -> go forward (clearest path is ahead)
+                motion_cmd = CMD_FORWARD;
             } else {
-                // Center has largest distance or no valid direction -> continue current direction
-                rotate_cmd = current_rotate_cmd;
+                // No valid direction -> keep rotating in current direction to try to get unstuck
+                motion_cmd = current_rotate_cmd;
             }
             
-            // Update current rotation direction
-            current_rotate_cmd = rotate_cmd;
-            
-            Serial.print("[SCAN] All directions blocked, continuing ");
-            Serial.print((rotate_cmd == CMD_ROTATE_CW) ? "CW" : "CCW");
+            Serial.print("[SCAN] All directions blocked, ");
+            if (motion_cmd == CMD_FORWARD) {
+                Serial.print("going forward ");
+            } else {
+                Serial.print((motion_cmd == CMD_ROTATE_CW) ? "rotating CW " : "rotating CCW ");
+            }
             Serial.print(" (max distance: ");
             Serial.print(max_dist);
             Serial.print(" cm at ");
@@ -274,11 +267,11 @@ void task_autonomous(void *pvParameters) {
             }
             Serial.println(")");
             
-            sendMotionCommand(rotate_cmd);
+            sendMotionCommand(motion_cmd);
             vTaskDelay(rotate_recovery);
             sendMotionCommand(CMD_STOP);
 
-            distances = scanThreeDirections(servo, front_sensor);
+            distances = scanThreeDirections(servo);
             best_dir = pickBestDirection(distances, max_distance);
             recovery_attempts++;
         }
@@ -289,19 +282,19 @@ void task_autonomous(void *pvParameters) {
             continue;
         }
 
-        // Execute chosen direction
+        // Execute chosen direction: 0=right→CW, 1=center→forward, 2=left→CCW
         if (best_dir == 0) {
-            current_rotate_cmd = CMD_ROTATE_CCW;
-            sendMotionCommand(CMD_ROTATE_CCW);
-            vTaskDelay(turn_window);
-            sendMotionCommand(CMD_STOP);
-        } else if (best_dir == 2) {
             current_rotate_cmd = CMD_ROTATE_CW;
             sendMotionCommand(CMD_ROTATE_CW);
             vTaskDelay(turn_window);
             sendMotionCommand(CMD_STOP);
+        } else if (best_dir == 2) {
+            current_rotate_cmd = CMD_ROTATE_CCW;
+            sendMotionCommand(CMD_ROTATE_CCW);
+            vTaskDelay(turn_window);
+            sendMotionCommand(CMD_STOP);
         } else {
-            // Center is already clear; keep going on next loop iteration
+            // best_dir == 1: center is best, move forward on next loop iteration
         }
     }
 }

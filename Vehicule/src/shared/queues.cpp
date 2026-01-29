@@ -4,6 +4,7 @@
  */
 
 #include "queues.h"
+#include "sensor_state.h"
 #include <Arduino.h>
 
 // Queue: ESP-NOW ISR → Communication Task
@@ -42,6 +43,12 @@ bool initSharedQueues() {
     
     // Give semaphore initially (system starts in safe state)
     xSemaphoreGive(xSafetySemaphore);
-
+    
+    // Initialize sensor state (mutex for thread-safe sensor readings)
+    if (!initSensorState()) {
+        Serial.println("[ERROR] Queues: Failed to initialize sensor state");
+        return false;
+    }
+    
     return true;
 }

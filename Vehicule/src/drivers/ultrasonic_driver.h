@@ -36,7 +36,15 @@ public:
      * @return Filtered distance in cm, -1.0 if error or timeout
      */
     float readDistanceCM();
-    
+
+    /**
+     * @brief Read raw distance in centimeters (no filter)
+     * @details Single hardware read, no buffer or filter state updated.
+     *          Use for per-direction sampling where filtering is done locally.
+     * @return Raw distance in cm, -1.0 if error or timeout
+     */
+    float readDistanceRaw();
+
 private:
     uint8_t trig_pin_;
     uint8_t echo_pin_;
@@ -53,12 +61,16 @@ private:
     // Filter constants
     static constexpr size_t FILTER_BUFFER_SIZE = 5;          // 5-sample moving average
     static constexpr float MAX_DEVIATION_CM = 50.0f;         // Max deviation to reject spike
+    static constexpr unsigned int MAX_CONSECUTIVE_INVALID = 5;  // After this many timeouts, return -1 (don't hold stale value)
+    static constexpr unsigned int MAX_CONSECUTIVE_SPIKE = 3;    // After this many spike rejections, force-accept to allow filter to adapt
     
     // Filter state
     std::array<float, FILTER_BUFFER_SIZE> distance_buffer_;
     size_t buffer_index_;
     size_t valid_samples_count_;
     float last_filtered_distance_;
+    unsigned int consecutive_invalid_count_;
+    unsigned int consecutive_spike_count_;
     
     /**
      * @brief Read raw distance from sensor hardware
