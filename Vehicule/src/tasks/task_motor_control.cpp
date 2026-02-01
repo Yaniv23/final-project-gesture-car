@@ -21,9 +21,6 @@ extern MotorDriver motor_driver;
 // External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
 
-// External task handle for autonomous task (defined in main.cpp)
-extern TaskHandle_t taskHandle_autonomous;
-
 void task_motor_control(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
     TickType_t lastWakeTime = xTaskGetTickCount();
@@ -47,52 +44,21 @@ void task_motor_control(void *pvParameters) {
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
             // Handle mode control commands first
             if (cmd_byte == CMD_MODE_MANUAL) {
-                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_MANUAL);
                 motion_stop();  // Stop motors when changing mode
-                
-                // Suspend autonomous task when switching to manual mode
-                if (taskHandle_autonomous != NULL && old_mode != MODE_MANUAL) {
-                    vTaskSuspend(taskHandle_autonomous);
-                }
-                
-                // Notify sender of mode change
                 espnow_send_mode_status(0);  // 0 = MODE_MANUAL
-                
                 last_logged_cmd = cmd_byte;
                 continue;
             } else if (cmd_byte == CMD_MODE_AUTONOMOUS) {
-                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 mode_mgr.setMode(MODE_AUTONOMOUS);
                 motion_stop();  // Stop motors when changing mode
-                
-                // Resume autonomous task when switching to autonomous mode
-                if (taskHandle_autonomous != NULL && old_mode != MODE_AUTONOMOUS) {
-                    vTaskResume(taskHandle_autonomous);
-                }
-                
-                // Notify sender of mode change
                 espnow_send_mode_status(1);  // 1 = MODE_AUTONOMOUS
-                
                 continue;
             } else if (cmd_byte == CMD_MODE_TOGGLE) {
-                DrivingMode old_mode = mode_mgr.getCurrentMode();
                 DrivingMode new_mode = mode_mgr.isManualMode() ? MODE_AUTONOMOUS : MODE_MANUAL;
                 mode_mgr.setMode(new_mode);
                 motion_stop();  // Stop motors when changing mode
-                
-                // Suspend or resume autonomous task based on new mode
-                if (taskHandle_autonomous != NULL) {
-                    if (new_mode == MODE_MANUAL) {
-                        vTaskSuspend(taskHandle_autonomous);
-                    } else {
-                        vTaskResume(taskHandle_autonomous);
-                    }
-                }
-                
-                // Notify sender of mode change
                 espnow_send_mode_status(new_mode == MODE_MANUAL ? 0 : 1);
-                
                 last_logged_cmd = cmd_byte;
                 continue;
             }

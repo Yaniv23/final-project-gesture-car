@@ -92,16 +92,36 @@ bool espnow_init(bool simulation_mode) {
     // Set WiFi to station mode (matching Vehicule_Controller.ino)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();  // Disconnect from any previous connection
-    delay(200);  // Give WiFi time to initialize
+    
+    // CRITICAL for battery operation: Disable WiFi sleep mode
+    // WiFi sleep can cause connection issues and packet loss
+    WiFi.setSleep(false);
+    Serial.println("[ESP-NOW] WiFi sleep mode disabled");
+    
+    // Extended delay for WiFi initialization on battery power
+    // Battery-powered ESP32 needs more time for power stabilization
+    delay(500);  // Increased from 200ms for better battery compatibility
+    
+    // Verify WiFi is ready before proceeding
+    uint8_t mac[6];
+    esp_err_t mac_result = esp_wifi_get_mac(WIFI_IF_STA, mac);
+    if (mac_result != ESP_OK) {
+        Serial.println("[WARNING] WiFi may not be fully initialized");
+        // Continue anyway - ESP-NOW might still work
+    }
     
     // Force WiFi channel - CRITICAL for ESP-NOW reliability
     // Both sender and vehicle MUST be on the same channel
-    esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    esp_err_t channel_result = esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    if (channel_result != ESP_OK) {
+        Serial.print("[ERROR] Failed to set WiFi channel: ");
+        Serial.println(channel_result);
+        return false;
+    }
     Serial.print("[ESP-NOW] WiFi channel set to: ");
     Serial.println(ESPNOW_WIFI_CHANNEL);
     
     // Print MAC address using esp_wifi_get_mac (matching Vehicule_Controller.ino)
-    uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",

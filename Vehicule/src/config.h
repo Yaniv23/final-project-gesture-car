@@ -56,18 +56,20 @@
 // Task Priorities (higher number = higher priority)
 #define TASK_PRIORITY_MOTOR_CONTROL     4  // Highest - real-time motor control
 #define TASK_PRIORITY_AUTONOMOUS        3  // Medium - autonomous navigation
-#define AUTONOMOUS_TASK_PRIORITY       3  // Alias for TASK_PRIORITY_AUTONOMOUS
+#define TASK_PRIORITY_SENSORS           3  // Medium - sensor readings (same as autonomous)
 #define TASK_PRIORITY_COMMUNICATION     2  // Lower - command handling
 
 // Task Periods (milliseconds)
 #define TASK_PERIOD_MOTOR_CONTROL      10   // 100 Hz - motor updates
 #define TASK_PERIOD_COMMUNICATION     100   // 10 Hz - command processing
 #define AUTONOMOUS_TASK_PERIOD_MS      50   // 20 Hz - autonomous loop
+#define SENSOR_READ_INTERVAL_MS        60   // ~16.7 Hz - sensor readings
 
 // Task Stack Sizes (bytes)
 #define TASK_STACK_SIZE_MOTOR_CONTROL   4096
 #define TASK_STACK_SIZE_COMMUNICATION   4096
 #define AUTONOMOUS_TASK_STACK_SIZE      2048  // Reduced - stub only
+#define TASK_STACK_SIZE_SENSORS         2048  // Sensor reading task
 
 // ============================================================================
 // Communication Settings

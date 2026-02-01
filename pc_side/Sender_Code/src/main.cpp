@@ -86,14 +86,25 @@ void setup() {
   
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  delay(100);
+  
+  WiFi.setSleep(false);
+  Serial.println("📡 WiFi sleep mode disabled");
+  
+  delay(300);  
   
   // Force WiFi channel - CRITICAL for ESP-NOW reliability
   // Both sender and vehicle MUST be on the same channel
-  esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  esp_err_t channel_result = esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  if (channel_result != ESP_OK) {
+    Serial.print("❌ Failed to set WiFi channel: ");
+    Serial.println(channel_result);
+    return;
+  }
   Serial.print("📡 WiFi channel set to: ");
   Serial.println(ESPNOW_WIFI_CHANNEL);
   
+  esp_wifi_set_max_tx_power(78);  
+
   // Print MAC address for debugging
   Serial.print("📍 Sender MAC: ");
   Serial.println(WiFi.macAddress());
@@ -162,7 +173,11 @@ void loop() {
   if (!isConnected) {
     // Not connected - attempt handshake every 2 seconds
     if (now - lastHandshakeAttempt >= HANDSHAKE_RETRY_INTERVAL_MS) {
-      Serial.println("📡 Attempting reconnection...");
+      static uint32_t retry_count = 0;
+      retry_count++;
+      if (retry_count % 5 == 0) {  // Print every 10 seconds (5 retries * 2s)
+        Serial.println("📡 Attempting reconnection...");
+      }
       sendHandshakeInit();
       lastHandshakeAttempt = now;
     }
