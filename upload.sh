@@ -52,7 +52,7 @@ BOARD_TYPE=$(echo "$BOARD_TYPE" | tr '[:upper:]' '[:lower:]')
 
 # Set project directory based on board type
 case "$BOARD_TYPE" in
-    car|vehicle|veh)
+    car)
         PROJECT_DIR="$SCRIPT_DIR/Car"
         BOARD_NAME="Car"
         ;;
