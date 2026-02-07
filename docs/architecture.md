@@ -1,32 +1,32 @@
-# Architecture du Projet - Gesture-Controlled Car
+# Project Architecture - Gesture-Controlled Car
 
 **Version:** 2.0  
 **Date:** 2025-01-27  
-**Description:** Document d'architecture structuré avec schémas visuels
+**Description:** Structured architecture document with visual diagrams
 
 ---
 
-## Table des Matières
+## Table of Contents
 
-1. [Vue Globale du Système](#1-vue-globale-du-système)
-2. [Architecture Véhicule (ESP32 Controller)](#2-architecture-véhicule-esp32-controller)
-3. [Architecture PC (Hand Tracking & Camera)](#3-architecture-pc-hand-tracking--camera)
-4. [Flux de Communication](#4-flux-de-communication)
+1. [System Overview](#1-system-overview)
+2. [Vehicle Architecture (ESP32 Controller)](#2-vehicle-architecture-esp32-controller)
+3. [PC Architecture (Hand Tracking & Camera)](#3-pc-architecture-hand-tracking--camera)
+4. [Communication Flow](#4-communication-flow)
 
 ---
 
-## 1. Vue Globale du Système
+## 1. System Overview
 
-### 1.1 Vue d'Ensemble
+### 1.1 Overview
 
-Le système est composé de **4 composants principaux** qui communiquent via différents protocoles :
+The system is composed of **4 main components** that communicate via different protocols:
 
-- **PC (Python)** : Reconnaissance de gestes et visualisation vidéo
-- **ESP32 Sender** : Pont de communication USB Serial → ESP-NOW
-- **ESP32-S3 Camera** : Module de streaming vidéo WiFi
-- **ESP32 Vehicle Controller** : Contrôleur principal du véhicule avec FreeRTOS
+- **PC (Python)** : Gesture recognition and video display
+- **ESP32 Sender** : USB Serial → ESP-NOW communication bridge
+- **ESP32-S3 Camera** : WiFi video streaming module
+- **ESP32 Vehicle Controller** : Main vehicle controller with FreeRTOS
 
-### 1.2 Schéma Architecture Globale
+### 1.2 Global Architecture Diagram
 
 ```mermaid
 graph TB
@@ -53,14 +53,14 @@ graph TB
     WiFiProtocol["WiFi UDP<br/>JPEG Fragmented"]
     ESPNOWProtocol["ESP-NOW<br/>2.4GHz Wireless"]
     
-    HandTracker -->|"Commandes<br/>gestuelles"| USBProtocol
-    USBProtocol -->|"Commandes<br/>sérialisées"| Sender
-    CameraViewer <-->|"Stream vidéo"| WiFiProtocol
+    HandTracker -->|"Gesture<br/>commands"| USBProtocol
+    USBProtocol -->|"Serialized<br/>commands"| Sender
+    CameraViewer <-->|"Video stream"| WiFiProtocol
     WiFiProtocol <-->|"MJPEG"| Camera
-    Sender -->|"Commandes<br/>binaires"| ESPNOWProtocol
-    ESPNOWProtocol -->|"Commandes<br/>moteur"| Controller
-    Controller -->|"Contrôle PWM"| Motors
-    Controller -->|"Lecture/Contrôle"| Sensors
+    Sender -->|"Binary<br/>commands"| ESPNOWProtocol
+    ESPNOWProtocol -->|"Motor<br/>commands"| Controller
+    Controller -->|"PWM control"| Motors
+    Controller -->|"Read/Control"| Sensors
     
     classDef pcStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef esp32Style fill:#00C853,stroke:#007E33,stroke-width:3px,color:#fff
@@ -74,46 +74,42 @@ graph TB
     class Camera cameraStyle
     class Controller vehicleStyle
     class Motors,Sensors hardwareStyle
-    class USBProtocol,UDPProtocol,ESPNOWProtocol commStyle
+    class USBProtocol,WiFiProtocol,ESPNOWProtocol commStyle
 ```
 
-### 1.3 Principes Architecturaux
+### 1.3 Architectural Principles
 
-- **Séparation des responsabilités** : Chaque composant a un rôle unique
-- **Communication asynchrone** : ESP-NOW pour la latence minimale
-- **Temps réel** : FreeRTOS pour le contrôle moteur (< 20ms)
-- **Modularité** : Architecture basée sur des tâches (tasks)
+- **Separation of concerns** : Each component has a single role
+- **Asynchronous communication** : ESP-NOW for minimal latency
+- **Real-time** : FreeRTOS for motor control (< 20ms)
+- **Modularity** : Task-based architecture
 
 ---
 
-## 2. Architecture Véhicule (ESP32 Controller)
+## 2. Vehicle Architecture (ESP32 Controller)
 
-### 2.1 Vue d'Ensemble du Contrôleur
+### 2.1 Controller Overview
 
-Le contrôleur véhicule utilise **FreeRTOS** pour gérer plusieurs tâches concurrentes avec des priorités différentes. Il supporte **2 modes de conduite** : **MANUAL** et **AUTONOMOUS**.
+The vehicle controller uses **FreeRTOS** to manage several concurrent tasks with different priorities. It supports **2 driving modes**: **MANUAL** and **AUTONOMOUS**.
 
-### 2.2 Schéma Architecture Véhicule - Vue Globale
+### 2.2 Vehicle Architecture Diagram - Global View
 
 ```mermaid
 graph TB
     subgraph VehicleController["🚗 ESP32 Vehicle Controller"]
         subgraph FreeRTOS["FreeRTOS Scheduler"]
-            subgraph HighPriority["🔴 Priorité Haute"]
+            subgraph HighPriority["High Priority"]
                 MotorControl["Motor Control<br/>Priority 4<br/>10ms"]
             end
             
-            subgraph MediumPriority["🟡 Priorité Moyenne"]
-                SensorFusion["Sensor Fusion<br/>Priority 3<br/>50ms"]
+            subgraph MediumPriority["Medium Priority"]
+                SensorFusion["Sensors<br/>Priority 3<br/>50ms"]
                 Autonomous["Autonomous<br/>Priority 3<br/>50ms"]
                 Communication["Communication<br/>Priority 2<br/>100ms"]
             end
-            
-            subgraph LowPriority["🟢 Priorité Basse"]
-                Telemetry["Telemetry<br/>Priority 1<br/>100ms"]
-            end
         end
         
-        subgraph SharedResources["Ressources Partagées"]
+        subgraph SharedResources["Shared Resources"]
             CommandQueue["Command Queue<br/>(FreeRTOS Queue)"]
             ModeManager["Mode Manager<br/>(Singleton)"]
             MotorDriver["Motor Driver<br/>(4 Motors)"]
@@ -128,114 +124,104 @@ graph TB
     
     ESPNOW["ESP-NOW<br/>Wireless"]
     
-    ESPNOW -->|"Commandes"| Communication
-    Communication -->|"Envoie"| CommandQueue
-    CommandQueue -->|"Lit"| MotorControl
-    CommandQueue -->|"Lit"| Autonomous
-    ModeManager -->|"État mode"| MotorControl
-    ModeManager -->|"État mode"| Autonomous
+    ESPNOW -->|"Commands"| Communication
+    Communication -->|"Send"| CommandQueue
+    CommandQueue -->|"Read"| MotorControl
+    CommandQueue -->|"Read"| Autonomous
+    ModeManager -->|"Mode state"| MotorControl
+    ModeManager -->|"Mode state"| Autonomous
     MotorControl -->|"PWM"| MotorDriver
-    Autonomous -->|"Commandes"| CommandQueue
-    SensorFusion -->|"Lecture"| Ultrasonic
-    SensorFusion -->|"Contrôle"| Servo
-    MotorDriver -->|"Signaux"| Motors
-    Telemetry -->|"Statut"| ESPNOW
+    Autonomous -->|"Commands"| CommandQueue
+    SensorFusion -->|"Read"| Ultrasonic
+    SensorFusion -->|"Control"| Servo
+    MotorDriver -->|"Signals"| Motors
     
     classDef highPriority fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
     classDef mediumPriority fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
-    classDef lowPriority fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
     classDef shared fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
     classDef hardware fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
     classDef comm fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:#000
     
     class MotorControl highPriority
     class SensorFusion,Autonomous,Communication mediumPriority
-    class Telemetry lowPriority
     class CommandQueue,ModeManager,MotorDriver shared
     class Motors,Servo,Ultrasonic hardware
     class ESPNOW comm
 ```
 
-### 2.3 Architecture des Tasks (Détails)
+### 2.3 Task Architecture (Details)
 
 ```mermaid
 graph LR
     subgraph Tasks["FreeRTOS Tasks"]
-        T2["2. Sensor Fusion<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Ultrasonic reading<br/>• Servo control<br/>• Distance filtering<br/>• Sensor data fusion"]
+        T1["1. Motor Control<br/>10ms | Priority 4<br/>━━━━━━━━━━━━━━━━<br/>• Command dequeue<br/>• Mode check<br/>• PWM output<br/>• Mecanum kinematics"]
         
-        T3["3. Autonomous<br/>⏱️ 50ms | 🟡 Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Navigation logic<br/>• Obstacle avoidance<br/>• Path planning<br/>• Stuck detection"]
+        T2["2. Sensors<br/>50ms | Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Ultrasonic reading<br/>• Servo control<br/>• Distance filtering<br/>• SensorState update"]
         
-        T4["4. Communication<br/>⏱️ 100ms | 🟡 Priority 2<br/>━━━━━━━━━━━━━━━━<br/>• ESP-NOW reception<br/>• Protocol parsing<br/>• Queue management<br/>• Handshake handling"]
+        T3["3. Autonomous<br/>50ms | Priority 3<br/>━━━━━━━━━━━━━━━━<br/>• Navigation logic<br/>• Obstacle avoidance<br/>• 3-direction scan<br/>• Stuck recovery"]
         
-        T5["5. Telemetry<br/>⏱️ 100ms | 🟢 Priority 1<br/>━━━━━━━━━━━━━━━━<br/>• Status reporting<br/>• Debug info<br/>• Performance metrics"]
+        T4["4. Communication<br/>100ms | Priority 2<br/>━━━━━━━━━━━━━━━━<br/>• ESP-NOW reception<br/>• Protocol parsing<br/>• Queue management<br/>• Handshake handling"]
     end
     
     classDef task1 fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
     classDef task2 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
     classDef task3 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
     classDef task4 fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
-    classDef task5 fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
     
     class T1 task1
     class T2 task2
     class T3 task3
     class T4 task4
-    class T5 task5
 ```
 
-### 2.4 Modes de Conduite
+### 2.4 Driving Modes
 
-Le système supporte **2 modes de conduite** gérés par le `ModeManager` :
+The system supports **2 driving modes** managed by `ModeManager`:
 
 #### Mode MANUAL
-- Contrôle via gestes de la main (PC → ESP32 Sender → Vehicle)
-- Commandes reçues via ESP-NOW
-- Réactivité temps réel (< 20ms)
+- Control via hand gestures (PC → ESP32 Sender → Vehicle)
+- Commands received via ESP-NOW
+- Real-time responsiveness (< 20ms)
 
 #### Mode AUTONOMOUS
-- Navigation autonome avec évitement d'obstacles
-- Utilise capteur ultrasonique + servo pour scanning
-- Détection de blocage (stuck detection)
-- Algorithme de navigation avec scan 3 directions
-- **Améliorations Phase 0-4** :
-  - Filtrage médian des mesures ultrasoniques
-  - Scan déclenché 3 directions (45°, 90°, 135°)
-  - Zones de distance (sécurité, freinage, critique)
-  - Détection blocage par variance et oscillations
-  - Machine à états 7 états avec récupération
+- Autonomous navigation with obstacle avoidance
+- Uses ultrasonic sensor + servo for 3-direction scanning (10°, 90°, 180°)
+- Stuck detection and recovery (up to 3 attempts)
+- Distance from `SensorState` (updated by Sensors task); scan uses 20 samples per direction
+- See [Section 8](#8-autonomous-mode---current-implementation-task_autonomouscpp) and [obstacle-detection-flow.md](architecture/obstacle-detection-flow.md) for the actual flow and constants.
 
-### 2.5 Schéma des Modes
+### 2.5 Mode Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> MANUAL: Démarrage
+    [*] --> MANUAL: Start
     
-    MANUAL --> AUTONOMOUS: CMD_MODE_AUTONOMOUS<br/>ou CMD_MODE_TOGGLE
-    AUTONOMOUS --> MANUAL: CMD_MODE_MANUAL<br/>ou CMD_MODE_TOGGLE
+    MANUAL --> AUTONOMOUS: CMD_MODE_AUTONOMOUS<br/>or CMD_MODE_TOGGLE
+    AUTONOMOUS --> MANUAL: CMD_MODE_MANUAL<br/>or CMD_MODE_TOGGLE
     
     state MANUAL {
         [*] --> WaitingCommand
-        WaitingCommand --> ProcessingCommand: Commande ESP-NOW
+        WaitingCommand --> ProcessingCommand: ESP-NOW command
         ProcessingCommand --> ExecutingMotion: Validation
-        ExecutingMotion --> WaitingCommand: Fin exécution
-        ExecutingMotion --> EmergencyStop: Obstacle détecté
-        EmergencyStop --> WaitingCommand: Obstacle évité
+        ExecutingMotion --> WaitingCommand: Execution complete
+        ExecutingMotion --> EmergencyStop: Obstacle detected
+        EmergencyStop --> WaitingCommand: Obstacle cleared
     }
     
     state AUTONOMOUS {
         [*] --> Forward
-        Forward --> Scan: Obstacle détecté
+        Forward --> Scan: Obstacle detected
         Scan --> Decision: Scan 3 directions
-        Decision --> Action: Choix direction
-        Action --> Forward: Mouvement exécuté
-        Action --> BackingUp: Toutes directions bloquées
-        BackingUp --> Scan: Recul terminé
-        Forward --> StuckPivoting: Blocage détecté
-        StuckPivoting --> Scan: Pivot terminé
+        Decision --> Action: Direction choice
+        Action --> Forward: Motion executed
+        Action --> BackingUp: All directions blocked
+        BackingUp --> Scan: Backup complete
+        Forward --> StuckPivoting: Stuck detected
+        StuckPivoting --> Scan: Pivot complete
     }
 ```
 
-### 2.6 Flux de Données - Mode MANUAL
+### 2.6 Data Flow - MANUAL Mode
 
 ```mermaid
 sequenceDiagram
@@ -247,64 +233,60 @@ sequenceDiagram
     participant Motor as Motor Control Task
     participant Motors as Motors
     
-    PC->>Sender: USB Serial (Commande)
-    Sender->>Vehicle: ESP-NOW (Commande binaire)
-    Vehicle->>Comm: Réception ESP-NOW
-    Comm->>Comm: Validation protocole
-    Comm->>Queue: Envoie commande
-    Queue->>Motor: Lecture commande
-    Motor->>Motor: Vérification mode (MANUAL)
-    Motor->>Motor: Exécution mouvement
-    Motor->>Motors: Contrôle PWM
-    Motors-->>PC: Mouvement effectué
+    PC->>Sender: USB Serial (Command)
+    Sender->>Vehicle: ESP-NOW (Binary command)
+    Vehicle->>Comm: ESP-NOW reception
+    Comm->>Comm: Protocol validation
+    Comm->>Queue: Send command
+    Queue->>Motor: Read command
+    Motor->>Motor: Mode check (MANUAL)
+    Motor->>Motor: Execute motion
+    Motor->>Motors: PWM control
+    Motors-->>PC: Motion complete
 ```
 
-### 2.7 Flux de Données - Mode AUTONOMOUS
+### 2.7 Data Flow - AUTONOMOUS Mode
 
 ```mermaid
 sequenceDiagram
     participant Auto as Autonomous Task
-    participant Sensor as Sensor Fusion Task
-    participant Ultrasonic as Ultrasonic Sensor
+    participant Sensor as Sensors Task
+    participant SensorState as SensorState
     participant Servo as Servo Motor
     participant Queue as Command Queue
     participant Motor as Motor Control Task
     participant Motors as Motors
     
     loop Navigation Loop (50ms)
-        Auto->>Sensor: Demande lecture distance
-        Sensor->>Ultrasonic: Lecture distance
-        Ultrasonic-->>Sensor: Distance (cm)
-        Sensor-->>Auto: Distance filtrée
+        Auto->>SensorState: getSensorState (front/rear)
+        SensorState-->>Auto: front_distance, rear_distance
         
-        alt Obstacle détecté (< 18cm)
-            Auto->>Servo: Scan 3 directions (45°, 90°, 135°)
-            Servo-->>Auto: Positions servo
-            Auto->>Ultrasonic: Mesures multiples
-            Ultrasonic-->>Auto: Distances (L, C, R)
-            Auto->>Auto: Décision direction
-            Auto->>Queue: Commande mouvement
-            Queue->>Motor: Lecture commande
-            Motor->>Motor: Vérification mode (AUTONOMOUS)
-            Motor->>Motors: Exécution mouvement
-        else Pas d'obstacle
-            Auto->>Queue: Commande FORWARD
-            Queue->>Motor: Lecture commande
-            Motor->>Motors: Avancement continu
+        alt Obstacle detected (< 20cm)
+            Auto->>Servo: Scan 3 directions (10°, 90°, 180°)
+            Servo-->>Auto: Servo positions
+            Auto->>Auto: 20 samples per direction
+            Auto->>Auto: Pick best direction
+            Auto->>Queue: Motion command
+            Queue->>Motor: Read command
+            Motor->>Motor: Mode check (AUTONOMOUS)
+            Motor->>Motors: Execute motion
+        else No obstacle
+            Auto->>Queue: CMD_FORWARD
+            Queue->>Motor: Read command
+            Motor->>Motors: Continue forward
         end
     end
 ```
 
-### 2.8 Structure des Couches Logiciel
+### 2.8 Software Layer Structure
 
 ```mermaid
 graph TB
     subgraph ApplicationLayer["Application Layer (Tasks)"]
         MotorTask["task_motor_control"]
-        SensorTask["task_sensor_fusion"]
+        SensorTask["task_sensors"]
         AutoTask["task_autonomous"]
         CommTask["task_communication"]
-        TelemetryTask["task_telemetry"]
     end
     
     subgraph ControlLayer["Control Layer"]
@@ -342,7 +324,7 @@ graph TB
     classDef comm fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
     classDef shared fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
     
-    class SafetyTask,MotorTask,SensorTask,AutoTask,CommTask,TelemetryTask app
+    class MotorTask,SensorTask,AutoTask,CommTask app
     class ModeManager,MotionControl control
     class MotorDriver,ServoDriver,UltrasonicDriver driver
     class ESPNowHandler,CommandProtocol comm
@@ -351,16 +333,16 @@ graph TB
 
 ---
 
-## 3. Architecture PC (Hand Tracking & Camera)
+## 3. PC Architecture (Hand Tracking & Camera)
 
-### 3.1 Vue d'Ensemble PC
+### 3.1 PC Overview
 
-Le côté PC est composé de **2 applications Python principales** qui fonctionnent indépendamment :
+The PC side consists of **2 main Python applications** that run independently:
 
-- **Hand Tracker** : Reconnaissance de gestes avec MediaPipe
-- **Camera Viewer** : Visualisation du stream vidéo depuis ESP32-S3
+- **Hand Tracker** : Gesture recognition with MediaPipe (`pc_side/Hand_Tracking/Hand_Tracker.py`, `constant.py`)
+- **Camera Viewer** : Video stream display from ESP32-S3 (`pc_side/ESP_Camera_Module/src/camera_viewer.py`)
 
-### 3.2 Schéma Architecture PC
+### 3.2 PC Architecture Diagram
 
 ```mermaid
 graph TB
@@ -424,26 +406,26 @@ graph TB
     class Webcam,ESP32Sender,ESP32Camera hw
 ```
 
-### 3.3 Flux de Traitement - Hand Tracker
+### 3.3 Processing Flow - Hand Tracker
 
 ```mermaid
 flowchart TD
-    Start([Démarrage]) --> Init[Initialisation<br/>• Webcam<br/>• MediaPipe<br/>• Serial Port]
+    Start([Start]) --> Init[Initialization<br/>• Webcam<br/>• MediaPipe<br/>• Serial Port]
     Init --> Capture[Capture Frame<br/>Webcam]
     Capture --> Process[MediaPipe Processing<br/>Hand Detection]
-    Process --> HandDetected{Main<br/>détectée?}
+    Process --> HandDetected{Hand<br/>detected?}
     
-    HandDetected -->|Non| TimeoutCheck{Timeout<br/>> 1s?}
-    TimeoutCheck -->|Oui| StopCmd[Envoyer STOP]
-    TimeoutCheck -->|Non| Capture
+    HandDetected -->|No| TimeoutCheck{Timeout<br/>> 1s?}
+    TimeoutCheck -->|Yes| StopCmd[Send STOP]
+    TimeoutCheck -->|No| Capture
     
-    HandDetected -->|Oui| Analyze[Analyse Gesture<br/>• Position doigts<br/>• Orientation main<br/>• Position 3D]
-    Analyze --> GestureType{Type de<br/>gesture?}
+    HandDetected -->|Yes| Analyze[Gesture Analysis<br/>• Finger position<br/>• Hand orientation<br/>• 3D position]
+    Analyze --> GestureType{Gesture<br/>type?}
     
-    GestureType -->|Fist| Stop[Commande STOP]
-    GestureType -->|Index Up| Forward[Commande FORWARD]
-    GestureType -->|Index Down| Backward[Commande BACKWARD]
-    GestureType -->|Hand Position| Direction[Calcul Direction<br/>Angle + Position]
+    GestureType -->|Fist| Stop[STOP command]
+    GestureType -->|Index Up| Forward[FORWARD command]
+    GestureType -->|Index Down| Backward[BACKWARD command]
+    GestureType -->|Hand Position| Direction[Direction calculation<br/>Angle + Position]
     GestureType -->|3 Fingers| ModeToggle[Toggle Mode<br/>MANUAL/AUTONOMOUS]
     
     Direction --> SidewayLeft[SIDEWAY_LEFT]
@@ -451,7 +433,7 @@ flowchart TD
     Direction --> Diagonal[DIAGONAL_*]
     Direction --> Rotate[ROTATE_*]
     
-    Stop --> Stability[Vérification Stabilité<br/>Compteur de frames]
+    Stop --> Stability[Stability check<br/>Frame counter]
     Forward --> Stability
     Backward --> Stability
     SidewayLeft --> Stability
@@ -461,8 +443,8 @@ flowchart TD
     ModeToggle --> Stability
     
     Stability --> Stable{Stable<br/>≥ 3 frames?}
-    Stable -->|Non| Capture
-    Stable -->|Oui| Send[Envoyer Commande<br/>USB Serial]
+    Stable -->|No| Capture
+    Stable -->|Yes| Send[Send Command<br/>USB Serial]
     Send --> Capture
     
     classDef process fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
@@ -474,19 +456,19 @@ flowchart TD
     class Stop,Forward,Backward,SidewayLeft,SidewayRight,Diagonal,Rotate,ModeToggle,Send action
 ```
 
-### 3.4 Commandes Gestuelles
+### 3.4 Gesture Commands
 
-| Gesture | Commande | Code Hex | Description |
-|---------|----------|----------|-------------|
-| 👊 **Fist** | `STOP` | `0x00` | Arrêt complet |
-| 👆 **Index Up** | `FORWARD` | `0x01` | Avancer |
-| 👇 **Index Down** | `BACKWARD` | `0x02` | Reculer |
-| ✋ **Hand Position** | `SIDEWAY_LEFT/RIGHT` | `0x03/0x04` | Déplacement latéral |
+| Gesture | Command | Code Hex | Description |
+|---------|---------|----------|-------------|
+| 👊 **Fist** | `STOP` | `0x00` | Full stop |
+| 👆 **Index Up** | `FORWARD` | `0x01` | Move forward |
+| 👇 **Index Down** | `BACKWARD` | `0x02` | Move backward |
+| ✋ **Hand Position** | `SIDEWAY_LEFT/RIGHT` | `0x03/0x04` | Sideways movement |
 | 🔄 **Circle** | `ROTATE_CW/CCW` | `0x05/0x06` | Rotation |
-| 📍 **Hand Position** | `DIAGONAL_*` | `0x07-0x0A` | Mouvements diagonaux |
-| ✌️ **3 Fingers** | `MODE_TOGGLE` | `0x22` | Basculer mode |
+| 📍 **Hand Position** | `DIAGONAL_*` | `0x07-0x0A` | Diagonal movements |
+| ✌️ **3 Fingers** | `MODE_TOGGLE` | `0x22` | Toggle mode |
 
-### 3.5 Architecture des Modules PC
+### 3.5 PC Module Architecture
 
 ```mermaid
 graph LR
@@ -542,41 +524,41 @@ graph LR
 
 ---
 
-## 4. Flux de Communication
+## 4. Communication Flow
 
-### 4.1 Protocole de Communication Global
+### 4.1 Global Communication Protocol
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 Utilisateur
-    participant PC as 🖥️ PC (Hand Tracker)
-    participant Sender as 📡 ESP32 Sender
-    participant Vehicle as 🚗 Vehicle Controller
-    participant Motors as ⚙️ Motors
+    participant User as User
+    participant PC as PC (Hand Tracker)
+    participant Sender as ESP32 Sender
+    participant Vehicle as Vehicle Controller
+    participant Motors as Motors
     
-    User->>PC: Fait un geste (main)
-    PC->>PC: MediaPipe détection
-    PC->>PC: Analyse gesture
-    PC->>Sender: USB Serial (Commande hex)
-    Sender->>Sender: Conversion protocole
-    Sender->>Vehicle: ESP-NOW (Commande binaire)
-    Vehicle->>Vehicle: Validation commande
-    Vehicle->>Vehicle: Envoie dans queue
-    Vehicle->>Motors: Exécution mouvement
-    Motors-->>User: Véhicule bouge
+    User->>PC: Makes gesture (hand)
+    PC->>PC: MediaPipe detection
+    PC->>PC: Gesture analysis
+    PC->>Sender: USB Serial (Hex command)
+    Sender->>Sender: Protocol conversion
+    Sender->>Vehicle: ESP-NOW (Binary command)
+    Vehicle->>Vehicle: Command validation
+    Vehicle->>Vehicle: Enqueue
+    Vehicle->>Motors: Execute motion
+    Motors-->>User: Vehicle moves
 ```
 
-### 4.2 Protocole de Commande Binaire
+### 4.2 Binary Command Protocol
 
-Le système utilise un **protocole binaire simple** avec des commandes d'un seul byte :
+The system uses a **simple binary protocol** with single-byte commands:
 
 ```
 ┌─────────────────────────────────────────┐
-│  Format de Commande (1 byte)            │
+│  Command Format (1 byte)                 │
 ├─────────────────────────────────────────┤
-│  Byte 0: Code Commande (0x00 - 0xFF)   │
+│  Byte 0: Command code (0x00 - 0xFF)     │
 │                                          │
-│  Commandes Mouvement:                   │
+│  Motion commands:                        │
 │  0x00: STOP                             │
 │  0x01: FORWARD                           │
 │  0x02: BACKWARD                          │
@@ -587,23 +569,23 @@ Le système utilise un **protocole binaire simple** avec des commandes d'un seul
 │  0x07-0x0A: DIAGONAL_*                   │
 │  0x0B-0x0C: PIVOT_*                      │
 │                                          │
-│  Commandes Mode:                         │
+│  Mode commands:                          │
 │  0x20: MODE_MANUAL                       │
 │  0x21: MODE_AUTONOMOUS                   │
 │  0x22: MODE_TOGGLE                       │
 │                                          │
-│  Commandes Système:                      │
+│  System commands:                        │
 │  0xF0: HANDSHAKE_INIT                    │
 │  0xF1: HANDSHAKE_ACK                     │
 │  0xF2: HEARTBEAT                         │
 └─────────────────────────────────────────┘
 ```
 
-### 4.3 Protocole UDP Camera (ESP32-S3 → PC)
+### 4.3 UDP Camera Protocol (ESP32-S3 → PC)
 
-Le système de caméra utilise **UDP** pour le streaming vidéo avec fragmentation de frames JPEG :
+The camera system uses **UDP** for video streaming with JPEG frame fragmentation:
 
-#### Format de Paquet UDP
+#### UDP Packet Format
 
 ```
 ┌─────────────────────────────────────────┐
@@ -618,16 +600,16 @@ Le système de caméra utilise **UDP** pour le streaming vidéo avec fragmentati
 └─────────────────────────────────────────┘
 ```
 
-#### Caractéristiques
+#### Characteristics
 
-- **Port UDP** : 5000 (stream), 5001 (discovery)
-- **Taille max paquet** : 1400 bytes (UDP safe size)
-- **Taille data par paquet** : 1392 bytes (1400 - 8 header)
-- **Fragmentation** : Frames JPEG fragmentées si > 1392 bytes
-- **Reconstruction** : PC reconstruit frames depuis fragments
-- **Discovery** : Broadcast UDP sur port 5001 pour auto-découverte
+- **UDP ports** : 5000 (stream), 5001 (discovery)
+- **Max packet size** : 1400 bytes (UDP safe size)
+- **Data per packet** : 1392 bytes (1400 - 8 header)
+- **Fragmentation** : JPEG frames fragmented if > 1392 bytes
+- **Reconstruction** : PC reconstructs frames from fragments
+- **Discovery** : UDP broadcast on port 5001 for auto-discovery
 
-#### Flux UDP Camera
+#### UDP Camera Flow
 
 ```mermaid
 sequenceDiagram
@@ -654,7 +636,7 @@ sequenceDiagram
     end
 ```
 
-### 4.4 Schéma de Communication Détaillé
+### 4.4 Detailed Communication Diagram
 
 ```mermaid
 graph TB
@@ -716,11 +698,11 @@ graph TB
 
 ---
 
-## 5. Résumé des Technologies
+## 5. Technology Summary
 
-### 5.1 Stack Technique
+### 5.1 Technology Stack
 
-| Composant | Technologie | Version |
+| Component | Technology | Version |
 |-----------|-------------|---------|
 | **PC** | Python | 3.10+ |
 | **PC - Vision** | OpenCV | 4.5+ |
@@ -733,130 +715,131 @@ graph TB
 | **Wireless** | WiFi UDP | 2.4GHz |
 | **Build System** | PlatformIO | Latest |
 
-### 5.2 Caractéristiques Techniques
+### 5.2 Technical Characteristics
 
-- **Latence commande** : < 20ms (PC → Motors)
-- **Fréquence contrôle moteur** : 100Hz (10ms)
-- **Fréquence capteurs** : 20Hz (50ms)
-- **Protocole commandes** : Binaire (1 byte/commande)
-- **Protocole caméra** : UDP (fragmented JPEG)
-- **Communication véhicule** : ESP-NOW (sans WiFi AP)
-- **Communication caméra** : WiFi UDP (port 5000)
-- **Architecture** : Multi-tâches (FreeRTOS)
-
----
-
-## 6. Points Clés de l'Architecture
-
-### 6.1 Forces
-
-✅ **Séparation claire des responsabilités**  
-✅ **Architecture modulaire et extensible**  
-✅ **Temps réel garanti (FreeRTOS)**  
-✅ **Protocole binaire efficace**  
-✅ **Système de sécurité intégré**  
-✅ **Support multi-modes (MANUAL/AUTONOMOUS)**
-
-### 6.2 Points d'Attention
-
-⚠️ **ESP-NOW sans garantie de livraison** (pas d'ACK actuellement)  
-⚠️ **Ressources limitées ESP32** (RAM/Flash)  
-⚠️ **Latence réseau variable** (WiFi interference possible)  
-⚠️ **Configuration dispersée** (constant.py, config.h)
+- **Command latency** : < 20ms (PC → Motors)
+- **Motor control frequency** : 100 Hz (10 ms)
+- **Sensor frequency** : 20 Hz (50 ms)
+- **Command protocol** : Binary (1 byte per command)
+- **Camera protocol** : UDP (fragmented JPEG)
+- **Vehicle communication** : ESP-NOW (no WiFi AP)
+- **Camera communication** : WiFi UDP (port 5000)
+- **Architecture** : Multi-task (FreeRTOS)
 
 ---
 
+## 6. Architecture Key Points
+
+### 6.1 Strengths
+
+- **Clear separation of concerns**  
+- **Modular and extensible architecture**  
+- **Real-time guarantee (FreeRTOS)**  
+- **Efficient binary protocol**  
+- **Integrated safety system**  
+- **Multi-mode support (MANUAL/AUTONOMOUS)**
+
+### 6.2 Points of Attention
+
+- **ESP-NOW has no delivery guarantee** (no ACK currently)  
+- **Limited ESP32 resources** (RAM/Flash)  
+- **Variable network latency** (WiFi interference possible)  
+- **Configuration spread across** (constant.py, config.h); autonomous timings/thresholds are hardcoded in `task_autonomous.cpp`, not in config.h
+
 ---
 
-## 7. Mode Autonome - Architecture Simplifiée
+---
 
-### 7.1 Vue d'Ensemble
+## 7. Autonomous Mode - Conceptual Simplified Design (Not Implemented)
 
-Le mode autonome utilise une machine à états simplifiée (FSM) avec seulement 3 états pour orchestrer la navigation avec évitement d'obstacles. L'architecture a été drastiquement simplifiée pour réduire la complexité :
-- **3 états** au lieu de 7
-- **1 stratégie de récupération** au lieu de 5
-- **15 paramètres de configuration** au lieu de 50+
-- **Détection de blocage simple** basée sur timeout au lieu de méthodes complexes
+This section describes a **conceptual** simplified 3-state FSM design. The **current** implementation is in [Section 8](#8-autonomous-mode---current-implementation-task_autonomouscpp) and in `Vehicule/src/tasks/task_autonomous.cpp`. The codebase does **not** contain separate `obstacle_detection/` or `navigation/` modules; autonomous logic lives in `task_autonomous.cpp` with hardcoded timings and thresholds (not in `config.h`).
 
-### 7.2 Diagramme FSM - Architecture Simplifiée (3 États)
+### 7.1 Overview (Conceptual)
+
+The conceptual design uses a simplified state machine (FSM) with 3 states for obstacle-avoidance navigation:
+- **3 states** instead of 7
+- **1 recovery strategy** instead of 5
+- **Stuck detection** based on timeout instead of complex methods
+
+### 7.2 Conceptual FSM Diagram (3 States)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> FORWARD: Démarrage
+    [*] --> FORWARD: Start
     
     state FORWARD {
-        [*] --> MesureDistance
-        MesureDistance --> AvanceNormal: distance ≥ 15cm
-        MesureDistance --> TransitionScan: distance < 15cm
-        AvanceNormal --> MesureDistance: CMD_FORWARD
+        [*] --> MeasureDistance
+        MeasureDistance --> AdvanceNormal: distance >= 15cm
+        MeasureDistance --> TransitionScan: distance < 15cm
+        AdvanceNormal --> MeasureDistance: CMD_FORWARD
         TransitionScan --> [*]: CMD_STOP
     }
     
     FORWARD --> SCAN: distance < 15cm
-    FORWARD --> SCAN: timeout 5s sans changement
+    FORWARD --> SCAN: timeout 5s no change
     
     state SCAN {
-        [*] --> ScanGauche: 45°
-        ScanGauche --> ScanCentre: Attente 200ms
-        ScanCentre --> ScanDroite: 90° → 135°
-        ScanDroite --> ScanComplete: Validation
+        [*] --> ScanLeft: 45 deg
+        ScanLeft --> ScanCentre: Wait 200ms
+        ScanCentre --> ScanRight: 90 to 135 deg
+        ScanRight --> ScanComplete: Validation
         ScanComplete --> [*]
     }
     
-    SCAN --> ACTION: Scan complet + décision
+    SCAN --> ACTION: Scan complete + decision
     
     state ACTION {
-        [*] --> ExecuteMouvement
-        ExecuteMouvement --> RotationGauche: ROTATE_CCW
-        ExecuteMouvement --> RotationDroite: ROTATE_CW
-        ExecuteMouvement --> AvanceCourt: FORWARD 200ms
-        ExecuteMouvement --> DemiTour: BACKWARD + ROTATE aléatoire
-        RotationGauche --> [*]
-        RotationDroite --> [*]
-        AvanceCourt --> [*]
-        DemiTour --> [*]
+        [*] --> ExecuteMotion
+        ExecuteMotion --> RotateLeft: ROTATE_CCW
+        ExecuteMotion --> RotateRight: ROTATE_CW
+        ExecuteMotion --> AdvanceShort: FORWARD 200ms
+        ExecuteMotion --> UTurn: BACKWARD + ROTATE random
+        RotateLeft --> [*]
+        RotateRight --> [*]
+        AdvanceShort --> [*]
+        UTurn --> [*]
     }
     
-    ACTION --> FORWARD: Mouvement terminé
+    ACTION --> FORWARD: Motion complete
     
     note right of FORWARD
-        Deux façons d'arriver au SCAN:
-        1. distance < 15cm (obstacle détecté)
-        2. Timeout 5s sans changement distance (bloqué)
+        Two ways to enter SCAN:
+        1. distance < 15cm (obstacle detected)
+        2. Timeout 5s no distance change (stuck)
         
-        Détection blocage simple:
-        • Timeout: pas de changement ≥ 3cm pendant 5s
-        • Solution: recul 400ms puis scan
+        Simple stuck detection:
+        • Timeout: no change >= 3cm for 5s
+        • Solution: backup 400ms then scan
     end note
     
     note right of ACTION
-        Actions possibles:
-        • LEFT: Rotation CCW 500ms
-        • RIGHT: Rotation CW 500ms
-        • FORWARD: Avance 200ms
-        • U-TURN: Recul 400ms + rotation aléatoire 500ms
+        Possible actions:
+        • LEFT: CCW rotation 500ms
+        • RIGHT: CW rotation 500ms
+        • FORWARD: Advance 200ms
+        • U-TURN: Backup 400ms + random rotation 500ms
     end note
 ```
 
-### 7.2.1 Flow Simplifié - Vue d'Ensemble
+### 7.2.1 Conceptual Flow - Overview
 
 ```mermaid
 flowchart TD
-    Start([Démarrage]) --> Forward[FORWARD<br/>Mesure distance]
+    Start([Start]) --> Forward[FORWARD<br/>Measure distance]
     
-    Forward -->|distance ≥ 15cm| ForwardOK[Avance normale<br/>CMD_FORWARD]
-    Forward -->|distance < 15cm| Scan[SCAN<br/>3 directions<br/>45° 90° 135°]
-    Forward -->|Timeout 5s<br/>sans changement| Backup[Recul 400ms]
+    Forward -->|distance >= 15cm| ForwardOK[Advance normal<br/>CMD_FORWARD]
+    Forward -->|distance < 15cm| Scan[SCAN<br/>3 directions<br/>45 deg 90 deg 135 deg]
+    Forward -->|Timeout 5s<br/>no change| Backup[Backup 400ms]
     
     ForwardOK --> Forward
     Backup --> Scan
     
-    Scan -->|Scan complet| Decision[Choisir meilleure direction<br/>Gauche > Droite > Avant > U-Turn]
+    Scan -->|Scan complete| Decision[Pick best direction<br/>Left > Right > Forward > U-Turn]
     
-    Decision -->|Gauche > 30cm| ActionLeft[ACTION<br/>ROTATE_CCW 500ms]
-    Decision -->|Droite > 30cm| ActionRight[ACTION<br/>ROTATE_CW 500ms]
-    Decision -->|Avant > 30cm| ActionForward[ACTION<br/>FORWARD 200ms]
-    Decision -->|Toutes < 30cm| ActionUTurn[ACTION<br/>BACKWARD 400ms<br/>+ ROTATE aléatoire 500ms]
+    Decision -->|Left > 30cm| ActionLeft[ACTION<br/>ROTATE_CCW 500ms]
+    Decision -->|Right > 30cm| ActionRight[ACTION<br/>ROTATE_CW 500ms]
+    Decision -->|Forward > 30cm| ActionForward[ACTION<br/>FORWARD 200ms]
+    Decision -->|All < 30cm| ActionUTurn[ACTION<br/>BACKWARD 400ms<br/>+ ROTATE random 500ms]
     
     ActionLeft --> Forward
     ActionRight --> Forward
@@ -873,18 +856,18 @@ flowchart TD
     style Backup fill:#F44336,stroke:#C62828,stroke-width:2px,color:#fff
 ```
 
-### 7.2.2 Comparaison Avant/Après Simplification
+### 7.2.2 Conceptual Comparison (Before / After)
 
-| Aspect | Avant | Après |
-|--------|-------|-------|
-| **États** | 7 (FORWARD, SCAN, DECISION, ACTION, BACKING_UP, STUCK_PIVOTING, STOPPED) | 3 (FORWARD, SCAN, ACTION) |
-| **Stratégies récupération** | 5 (BACKUP_TURN, PIVOT_360, BACKUP_LONG, RANDOM_TURN, WALL_FOLLOW) | 1 (Backup + rotation aléatoire) |
-| **Modules** | 6 (NavigationStateMachine, ObstacleScanner, StuckDetector, PositionTracker, RecoveryStrategies, DirectionDecider) | 3 (NavigationStateMachine, ObstacleScanner, DirectionDecider) |
-| **Lignes de code** | ~1200 | ~400 |
-| **Paramètres config** | 50+ | 15 |
-| **Détection blocage** | Variance, oscillation, position tracking | Timeout simple (5s sans changement) |
+| Aspect | Before | After (conceptual) |
+|--------|--------|---------------------|
+| **States** | 7 (FORWARD, SCAN, DECISION, ACTION, BACKING_UP, STUCK_PIVOTING, STOPPED) | 3 (FORWARD, SCAN, ACTION) |
+| **Recovery strategies** | 5 (BACKUP_TURN, PIVOT_360, BACKUP_LONG, RANDOM_TURN, WALL_FOLLOW) | 1 (Backup + random rotation) |
+| **Modules** | 6 (conceptual) | 3 (conceptual; not present in repo) |
+| **Stuck detection** | Variance, oscillation, position tracking | Simple timeout (5s no change) |
 
-### 7.3 Pipeline de Traitement
+*Note: The current codebase implements autonomous logic in a single task (`task_autonomous.cpp`) with hardcoded values; it does not use separate `obstacle_detection/` or `navigation/` modules or AUTO_* defines in config.h. See Section 8 and [obstacle-detection-flow.md](architecture/obstacle-detection-flow.md).*
+
+### 7.3 Conceptual Processing Pipeline
 
 ```
 ┌──────────────┐
@@ -893,13 +876,13 @@ flowchart TD
 └──────┬───────┘
        ↓
 ┌──────────────┐
-│ SensorFilter │ ← Filtre médian (buffer=3)
-│ (médian)     │
+│ SensorFilter │ ← Median filter (buffer=3)
+│ (median)     │
 └──────┬───────┘
        ↓
 ┌──────────────┐
 │ Position     │
-│ Tracker      │ → Détection mouvement
+│ Tracker      │ → Motion detection
 └──────┬───────┘
        ↓
 ┌──────────────┐
@@ -909,99 +892,57 @@ flowchart TD
        ↓
 ┌──────────────┐
 │ Navigation   │
-│ FSM          │ → Décision + Action
+│ FSM          │ → Decision + Action
 └──────────────┘
 ```
 
-### 7.4 Modules Principaux
+*The above pipeline is conceptual. The actual implementation uses `SensorState` (updated by `task_sensors`) and inline scan/decision logic in `task_autonomous.cpp`.*
 
-#### SensorFilter
-- **Rôle** : Éliminer spikes capteur ultrasonique
-- **Algorithme** : Filtre médian (buffer circulaire n=3)
-- **Fichiers** : `obstacle_detection/sensor_filter.h/cpp`
+### 7.4 Conceptual Modules (Not in Repo)
 
-#### ObstacleScanner
-- **Rôle** : Scanner environnement (3 directions)
-- **Angles** : 45° (gauche), 90° (avant), 135° (droite)
-- **Stabilisation** : 200ms par angle
-- **Fichiers** : `obstacle_detection/obstacle_scanner.h/cpp`
+The following modules are **not** present in the repository. Autonomous logic is implemented directly in `task_autonomous.cpp` (see Section 8).
 
-#### NavigationStateMachine
-- **Rôle** : Orchestrer navigation (SIMPLIFIÉ)
-- **États** : 3 états (FORWARD, SCAN, ACTION)
-- **Zones distance** :
-  - **distance ≥ 15cm** : Avance normale (CMD_FORWARD)
-  - **distance < 15cm** : Arrêt + Scan
-- **Détection blocage** : Timeout simple (5s sans changement ≥ 3cm) → Recul + Scan
-- **Deux façons d'arriver au SCAN** :
-  1. Distance < 15cm (obstacle détecté)
-  2. Timeout 5s sans changement (bloqué) → Recul 400ms → Scan
-- **Fichiers** : `navigation/navigation_state_machine.h/cpp`
+#### SensorFilter (conceptual)
+- **Role** : Remove ultrasonic sensor spikes
+- **Algorithm** : Median filter (circular buffer n=3)
 
-#### DirectionDecider
-- **Rôle** : Choisir meilleure direction
-- **Priorité** : Gauche > Droite > Avant > U-Turn
-- **Critère** : Distance max parmi directions libres (> 30cm)
-- **Fichiers** : `navigation/direction_decider.h/cpp`
+#### ObstacleScanner (conceptual)
+- **Role** : Scan environment (3 directions)
+- **Angles** : Conceptual 45° / 90° / 135°; actual code uses 10° / 90° / 180°
 
-### 7.5 Paramètres de Configuration Simplifiés
+#### NavigationStateMachine (conceptual)
+- **Role** : Orchestrate navigation
+- **States** : 3 states (FORWARD, SCAN, ACTION)
 
-Tous les paramètres sont dans `config.h` - Réduits à 15 paramètres essentiels :
+#### DirectionDecider (conceptual)
+- **Role** : Pick best direction
+- **Criterion** : Max distance among free directions
 
-```cpp
-// Timing tâche
-#define AUTONOMOUS_TASK_PERIOD_MS    50    // Période de la tâche (20 Hz)
+### 7.5 Configuration (Actual vs Conceptual)
 
-// Seuils de distance
-#define AUTO_OBSTACLE_THRESHOLD_CM   15    // Distance déclenchement scan
-#define AUTO_MIN_FREE_SPACE_CM       30    // Espace minimum pour choisir direction
+**Actual:** [Vehicule/src/config.h](Vehicule/src/config.h) contains task periods and hardware pins but **no** AUTO_* autonomous parameters. Obstacle threshold (20 cm), rear threshold (15 cm), stuck threshold (40 cm), backup (800 ms), turn (1200 ms), recovery (800 ms), and scan angles (10°, 90°, 180°) are **hardcoded** in [task_autonomous.cpp](Vehicule/src/tasks/task_autonomous.cpp).
 
-// Vitesses
-#define AUTO_FORWARD_SPEED           200   // Vitesse avant (0-255)
-#define AUTO_TURN_SPEED             150   // Vitesse rotation (0-255)
+### 7.6 Conceptual Performance
 
-// Angles de scan
-#define AUTO_SCAN_LEFT_ANGLE         45    // Angle gauche
-#define AUTO_SCAN_CENTER_ANGLE       90    // Angle centre
-#define AUTO_SCAN_RIGHT_ANGLE        135   // Angle droite
+- **Scan time** : 600–800 ms (3 directions)
+- **Decision time** : < 10 ms
+- **Total reaction** : < 1000 ms (detection → action)
+- **Cycle period** : 50 ms (20 Hz)
 
-// Timing mouvements
-#define AUTO_TURN_DURATION_MS        500   // Durée rotation
-#define AUTO_BACKUP_DURATION_MS      400   // Durée recul
-#define AUTO_SERVO_SETTLE_MS         200   // Stabilisation servo
+### 7.7 Conceptual Stuck Detection
 
-// Détection blocage simple
-#define AUTO_STUCK_TIMEOUT_MS        5000  // Timeout sans changement = bloqué
-#define AUTO_STUCK_THRESHOLD_CM      3.0f  // Changement minimum pour "mouvement"
+Conceptual simplified stuck detection (not all implemented as described):
 
-// Filtrage
-#define AUTO_FILTER_SAMPLES          3     // Échantillons pour moyenne
-```
+#### Two Ways to Enter SCAN
 
-### 7.6 Performance
+**1. Distance < 15 cm (Obstacle detected)**  
+   - Vehicle measures front distance; if below threshold → stop and transition to SCAN.
 
-- **Temps scan** : 600-800ms (3 directions)
-- **Temps décision** : < 10ms
-- **Réaction totale** : < 1000ms (détection → action)
-- **Période cycle** : 50ms (20 Hz)
+**2. Timeout with no change (Stuck detected)**  
+   - Condition: No distance change ≥ 3 cm for 5 s.  
+   - Solution: Backup 400 ms then transition to SCAN.
 
-### 7.7 Détection de Blocage Simplifiée
-
-La détection de blocage a été simplifiée pour réduire la complexité :
-
-#### Deux Façons d'Arriver au SCAN
-
-**1. Distance < 15cm (Obstacle détecté)**
-   - Le véhicule mesure la distance devant
-   - Si `distance < AUTO_OBSTACLE_THRESHOLD_CM` (15cm) → Arrêt immédiat + Transition vers SCAN
-   - Pas de zone de freinage : On avance normalement tant que distance ≥ 15cm
-
-**2. Timeout sans changement (Blocage détecté)**
-   - Le véhicule détecte qu'il est bloqué via un timeout simple
-   - Condition : Pas de changement de distance ≥ `AUTO_STUCK_THRESHOLD_CM` (3cm) pendant `AUTO_STUCK_TIMEOUT_MS` (5s)
-   - Solution : Recul 400ms puis transition vers SCAN
-
-#### Flow de Récupération Blocage
+#### Conceptual Block Recovery Flow
 
 ```mermaid
 sequenceDiagram
@@ -1012,37 +953,170 @@ sequenceDiagram
     FSM->>SC: getFilteredDistance()
     SC-->>FSM: distance
     
-    FSM->>FSM: Check timeout<br/>(5s sans changement ≥ 3cm)
+    FSM->>FSM: Check timeout<br/>(5s no change >= 3cm)
     
-    alt Bloqué détecté
+    alt Stuck detected
         FSM->>FSM: CMD_BACKWARD (400ms)
         FSM->>FSM: Transition to SCAN
-    else Obstacle détecté
+    else Obstacle detected
         FSM->>FSM: CMD_STOP
         FSM->>FSM: Transition to SCAN
     end
     
-    FSM->>SC: scanDirection(45°, 90°, 135°)
+    FSM->>SC: scanDirection(45, 90, 135)
     SC-->>FSM: Scan results
-    FSM->>FSM: Decide direction → ACTION → FORWARD
+    FSM->>FSM: Decide direction -> ACTION -> FORWARD
 ```
 
-#### Paramètres de Configuration Simplifiés
+#### Advantages of Simplification (conceptual)
 
-Les paramètres de détection de blocage sont maintenant réduits à 2 :
-
-- `AUTO_STUCK_TIMEOUT_MS` (5000ms) : Timeout sans changement = bloqué
-- `AUTO_STUCK_THRESHOLD_CM` (3.0cm) : Changement minimum pour considérer "mouvement"
-
-#### Avantages de la Simplification
-
-1. **Moins de faux positifs** : Timeout simple au lieu de multiples méthodes complexes
-2. **Plus facile à déboguer** : Logique claire et directe
-3. **Moins de ressources** : Pas besoin de buffers circulaires ou historique complexe
-4. **Récupération rapide** : Recul immédiat puis scan pour trouver nouveau chemin
-4. **Vérifier que la récupération** génère réellement un mouvement significatif
+1. **Fewer false positives** : Simple timeout instead of multiple complex methods  
+2. **Easier to debug** : Clear, direct logic  
+3. **Fewer resources** : No circular buffers or complex history  
+4. **Fast recovery** : Backup then scan to find a new path
 
 ---
 
-**Document créé le 2025-01-27**  
-**Version 2.1 - Architecture Structurée avec Schémas Mermaid + Mode Autonome Amélioré**
+## 8. Autonomous Mode - Current Implementation (`task_autonomous.cpp`)
+
+See also: [obstacle-detection-flow.md](architecture/obstacle-detection-flow.md) for a concise flow and constants.
+
+### 8.1 Overview
+
+Autonomous mode is implemented directly in the FreeRTOS task `task_autonomous` (file `Vehicule/src/tasks/task_autonomous.cpp`). The logic follows a simple loop:
+
+- **Advance in short steps** in a straight line.
+- **Read front distance** from `SensorState` (updated by the Sensors task).
+- **Trigger avoidance** when an obstacle is detected below a fixed threshold (< 20 cm).
+- **Scan 3 directions** (10°, 90°, 180° — right, center, left) with the servo; 20 samples per direction.
+- **Pick the clearest direction** and execute the corresponding rotation (1200 ms turn, 800 ms recovery rotate).
+- **Apply "stuck" recovery** (up to 3 attempts, 800 ms each) if max distance ≤ 40 cm.
+
+This implementation is intentionally **blocking and local** to the autonomous task for simplicity. Autonomous timings and thresholds are **hardcoded** in `task_autonomous.cpp`; [config.h](Vehicule/src/config.h) does not define AUTO_* parameters.
+
+### 8.2 Flow Diagram - `task_autonomous`
+
+```mermaid
+flowchart TD
+    Start([Task start]) --> WaitSetup[Wait setupComplete]
+    WaitSetup --> Loop{Mode AUTONOMOUS ?}
+    
+    Loop -->|No| Idle[Short sleep<br/>(20 ms)]
+    Idle --> Loop
+    
+    Loop -->|Yes| ForwardStep[Send CMD_FORWARD<br/>+ delay 60 ms]
+    ForwardStep --> Measure[Read front distance<br/>from SensorState]
+    
+    Measure -->|distance >= 20cm<br/>or invalid| Loop
+    Measure -->|distance < 20cm| Obstacle[Obstacle detected<br/>CMD_STOP]
+    
+    Obstacle --> Backup[CMD_BACKWARD<br/>+ check rear via SensorState]
+    Backup --> Scan[Scan 3 directions<br/>10 deg / 90 deg / 180 deg<br/>20 samples per direction]
+    
+    Scan --> Decide[Pick best direction<br/>max valid distance]
+    
+    Decide -->|max_distance > 40cm| Execute[Rotate CW/CCW<br/>1200 ms toward best direction]
+    Decide -->|max_distance <= 40cm| Recovery[Recovery stuck<br/>up to 3 attempts, 800 ms each + rescan]
+    
+    Recovery -->|Path found| Execute
+    Recovery -->|Still stuck| Stuck[CMD_STOP<br/>Stay in place]
+    
+    Execute --> Loop
+    Stuck --> Loop
+    
+    style WaitSetup fill:#ECEFF1,stroke:#607D8B,stroke-width:2px,color:#000
+    style Loop fill:#4CAF50,stroke:#2E7D32,stroke-width:3px,color:#fff
+    style ForwardStep fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
+    style Measure fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
+    style Obstacle fill:#F44336,stroke:#C62828,stroke-width:2px,color:#fff
+    style Backup fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    style Scan fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    style Decide fill:#FFC107,stroke:#FFA000,stroke-width:2px,color:#000
+    style Recovery fill:#FF5722,stroke:#E64A19,stroke-width:2px,color:#fff
+    style Execute fill:#8BC34A,stroke:#558B2F,stroke-width:2px,color:#fff
+    style Stuck fill:#795548,stroke:#4E342E,stroke-width:2px,color:#fff
+```
+
+### 8.3 Components Used
+
+- **Sensors**  
+  - **Front distance** : Read via `getSensorState(&sensor_state)` in the main loop (`sensor_state.front_distance`). The Sensors task updates `SensorState` from the ultrasonic driver.  
+  - **Rear distance** : Same `SensorState` (`sensor_state.rear_distance`); used during backup to stop if rear < 15 cm.  
+  - **Scan** : Inside `scanThreeDirections(servo)`, raw readings use `readFrontSensorRaw(&raw)` (20 samples per direction).
+
+- **Actuators**  
+  - `ServoDriver servo` : Moves the ultrasonic sensor to 3 fixed angles for scan: 10° (right), 90° (center), 180° (left).  
+  - `task_motor_control` (via `xCommandQueue`) : Executes `CMD_FORWARD`, `CMD_BACKWARD`, `CMD_ROTATE_CW`, `CMD_ROTATE_CCW`, `CMD_STOP`.
+
+- **Infrastructure**  
+  - `ModeManager` : Enables autonomous mode (`isAutonomousMode()`); logic is skipped when not in AUTONOMOUS.  
+  - `xCommandQueue` : Shared motor command queue.  
+  - `SensorState` : Shared state updated by `task_sensors`; consumed by `task_autonomous`.
+
+### 8.4 Three-Direction Scan Algorithm
+
+The internal function `scanThreeDirections(servo)` performs a scan in three positions:
+
+- **Scan angles** : `{10°, 90°, 180°}` (right, center, left). Indices 0 = right, 1 = center, 2 = left.
+- **Per position** :
+  - Move servo to target angle (non-blocking),
+  - Stabilization delay: `SENSOR_READ_INTERVAL_MS` (60 ms from [config.h](Vehicule/src/config.h)),
+  - **20 samples** per direction with `SENSOR_READ_INTERVAL_MS` between reads; each sample via `readFrontSensorRaw(&raw)`.
+- **Filtering** :
+  - Keep only distances `0 < d < 400 cm`,
+  - **Average** of valid readings per direction,
+  - If no valid reading: direction stays `-1.0f` (invalid).
+- At end of scan, servo is **returned to 90°** for the next cycle.
+
+### 8.5 Best Direction Selection
+
+The function `pickBestDirection(distances, max_distance)`:
+
+- Iterates over the 3 directions and **ignores** invalid values (`<= 0` or `>= 400`).  
+- Selects the direction with **maximum distance** and returns its index:
+  - `0` : right (10°),  
+  - `1` : center (90°),  
+  - `2` : left (180°).
+- If no valid direction is found:
+  - **Defaults to center** (index 1).
+
+Rotation is then applied as:
+
+- `best_dir == 0` → **CW** (`CMD_ROTATE_CW`), 1200 ms.  
+- `best_dir == 2` → **CCW** (`CMD_ROTATE_CCW`), 1200 ms.  
+- `best_dir == 1` → no rotation; loop continues forward.
+
+### 8.6 "Stuck" Recovery Strategy
+
+After the scan, if max distance remains low:
+
+- **Stuck condition** : `max_distance <= 40 cm`.  
+- The algorithm enters a **recovery loop (up to 3 attempts)**:
+  - Find the direction with the largest valid distance,
+  - Choose motion:
+    - Index 0 (right) → `CMD_ROTATE_CW`,  
+    - Index 2 (left) → `CMD_ROTATE_CCW`,  
+    - Index 1 (center) → `CMD_FORWARD`,  
+    - Otherwise → reuse last rotation (`current_rotate_cmd`),
+  - Send the command for **800 ms** (`rotate_recovery`),
+  - Stop, then **full rescan**.
+- If after 3 attempts max distance is **still ≤ 40 cm**:
+  - System is **"stuck"**; sends `CMD_STOP` and continues the main loop.
+
+### 8.7 Front / Rear Safety
+
+- **Front** :
+  - Obstacle threshold: **20 cm**.  
+  - While `distance >= 20 cm` (or invalid), the vehicle **keeps advancing** in short steps (`CMD_FORWARD` + 60 ms delay).  
+  - Below threshold: **immediate stop** (`CMD_STOP`), then backup + scan.
+
+- **Rear** :
+  - During backup, the task reads **rear distance** from `getSensorState()` every 100 ms.  
+  - If `0 < rear_distance < 15 cm`, it stops backup, logs `[AUTO] Rear obstacle detected during backup` and sends `CMD_STOP`.
+
+Backup duration is **800 ms** total (or until rear obstacle). This provides **minimal but robust** safety while keeping the autonomous code compact.
+
+---
+
+**Document created 2025-01-27**  
+**Version 2.1 - Structured Architecture with Mermaid Diagrams + Autonomous Mode**

@@ -15,71 +15,50 @@
 #include "../communication/command_protocol.h"
 #include "../communication/espnow_handler.h"
 
-// Global motor driver instance (defined in main.cpp)
 extern MotorDriver motor_driver;
-
-// External flag from main.cpp indicating setup is complete
 extern volatile bool setupComplete;
 
 void task_motor_control(void *pvParameters) {
-    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);  // Use config value
+    const TickType_t period = pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL);
     TickType_t lastWakeTime = xTaskGetTickCount();
-    uint8_t last_logged_cmd = 0xFF;  // Track last logged command to avoid duplicate prints
-    
-    // Wait for setup to complete before initializing
+    uint8_t last_logged_cmd = 0xFF;
+
     while (!setupComplete) {
-        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10ms
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-    
-    // Initialize motion control with MotorDriver
+
     motion_init(&motor_driver);
-    
-    // Get ModeManager instance
     ModeManager& mode_mgr = ModeManager::getInstance();
-    
+
     uint8_t cmd_byte = 0;
-    
+
     while (1) {
-        // Try to get command from queue
         if (xQueueReceive(xCommandQueue, &cmd_byte, pdMS_TO_TICKS(TASK_PERIOD_MOTOR_CONTROL))) {
-            // Handle mode control commands first
             if (cmd_byte == CMD_MODE_MANUAL) {
                 mode_mgr.setMode(MODE_MANUAL);
-                motion_stop();  // Stop motors when changing mode
-                espnow_send_mode_status(0);  // 0 = MODE_MANUAL
+                motion_stop();
+                espnow_send_mode_status(0);
                 last_logged_cmd = cmd_byte;
                 continue;
             } else if (cmd_byte == CMD_MODE_AUTONOMOUS) {
                 mode_mgr.setMode(MODE_AUTONOMOUS);
-                motion_stop();  // Stop motors when changing mode
-                espnow_send_mode_status(1);  // 1 = MODE_AUTONOMOUS
+                motion_stop();
+                espnow_send_mode_status(1);
                 continue;
             } else if (cmd_byte == CMD_MODE_TOGGLE) {
                 DrivingMode new_mode = mode_mgr.isManualMode() ? MODE_AUTONOMOUS : MODE_MANUAL;
                 mode_mgr.setMode(new_mode);
-                motion_stop();  // Stop motors when changing mode
+                motion_stop();
                 espnow_send_mode_status(new_mode == MODE_MANUAL ? 0 : 1);
                 last_logged_cmd = cmd_byte;
                 continue;
             }
-            
-            // Check if manual commands should be ignored in autonomous mode
-            // Motion commands (CMD_STOP to CMD_PIVOT_RIGHT) work in both modes
-            // but manual commands from ESP-NOW should be ignored in autonomous mode
+
             if (cmd_byte >= CMD_STOP && cmd_byte <= CMD_PIVOT_RIGHT) {
-                // In autonomous mode, ignore manual commands (they come from ESP-NOW)
-                // Autonomous task sends its own commands which should be processed
-                // We can't distinguish source, so we allow all motion commands
-                // The autonomous task only runs when in autonomous mode anyway
             }
-              
-            // Check safety semaphore (secondary safety mechanism)
-            // Semaphore is given initially (safe state)
-            // If we CAN take semaphore, system is safe
-            if (xSafetySemaphore != NULL && 
+
+            if (xSafetySemaphore != NULL &&
                 xSemaphoreTake(xSafetySemaphore, 0) == pdTRUE) {
-                // System is safe - execute command
-                // Execute command based on byte value
                 switch (cmd_byte) {
                 case CMD_STOP:
                     motion_stop();
@@ -121,21 +100,16 @@ void task_motor_control(void *pvParameters) {
                     motion_pivot_right();
                     break;
                 default:
-                    // Unknown command - stop for safety
                     motion_stop();
                     break;
                 }
-                
-                // Return semaphore after command execution
+
                 xSemaphoreGive(xSafetySemaphore);
             } else {
-                // Semaphore not available (shouldn't happen if flag check passed)
-                // This is a secondary safety - block command execution
-                Serial.println("[MOTOR] Warning: Safety semaphore unavailable - Command blocked");
-                motion_stop();  // Safety: stop motors
+                motion_stop();
             }
         }
-        
+
         vTaskDelayUntil(&lastWakeTime, period);
     }
 }
