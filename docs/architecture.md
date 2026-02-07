@@ -1078,8 +1078,7 @@ The function `pickBestDirection(distances, max_distance)`:
   - `1` : center (90°),  
   - `2` : left (180°).
 - If no valid direction is found:
-  - **Defaults to center** (index 1),  
-  - Logs: `[PICK] No valid directions found, defaulting to center`.
+  - **Defaults to center** (index 1).
 
 Rotation is then applied as:
 
