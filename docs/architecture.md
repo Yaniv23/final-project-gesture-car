@@ -23,7 +23,7 @@ The system is composed of **4 main components** that communicate via different p
 
 - **PC (Python)** : Gesture recognition and video display
 - **ESP32 Sender** : USB Serial → ESP-NOW communication bridge
-- **ESP32-S3 Camera** : WiFi video streaming module
+- **ESP32-S3 Camera** : WiFi video streaming module (firmware based on forked [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) — MJPEG over HTTP, multiclient)
 - **ESP32 Vehicle Controller** : Main vehicle controller with FreeRTOS
 
 ### 1.2 Global Architecture Diagram
@@ -50,7 +50,7 @@ graph TB
     end
     
     USBProtocol["USB Serial<br/>115200 baud"]
-    WiFiProtocol["WiFi UDP<br/>JPEG Fragmented"]
+    WiFiProtocol["WiFi HTTP<br/>MJPEG"]
     ESPNOWProtocol["ESP-NOW<br/>2.4GHz Wireless"]
     
     HandTracker -->|"Gesture<br/>commands"| USBProtocol
@@ -340,7 +340,7 @@ graph TB
 The PC side consists of **2 main Python applications** that run independently:
 
 - **Hand Tracker** : Gesture recognition with MediaPipe (`pc_side/Hand_Tracking/Hand_Tracker.py`, `constant.py`)
-- **Camera Viewer** : Video stream display from ESP32-S3 (`pc_side/ESP_Camera_Module/src/camera_viewer.py`)
+- **Camera Viewer** : MJPEG stream display from ESP32-CAM (`pc_side/ESP-CAM/mjpeg_viewer.py`). The vehicle camera runs firmware based on the forked repo [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) (HTTP MJPEG, supports multiple viewers).
 
 ### 3.2 PC Architecture Diagram
 
@@ -360,7 +360,7 @@ graph TB
         end
         
         subgraph CameraApp["Camera Viewer Application"]
-            CameraViewer["camera_viewer.py<br/>━━━━━━━━━━━━━━━━<br/>• UDP socket receiver<br/>• Frame reconstruction<br/>• JPEG decoding<br/>• OpenCV display"]
+            CameraViewer["mjpeg_viewer.py<br/>━━━━━━━━━━━━━━━━<br/>• HTTP client<br/>• MJPEG stream /mjpeg/1<br/>• Multipart decode<br/>• OpenCV display"]
         end
         
         subgraph Dependencies["Dependencies"]
@@ -374,7 +374,7 @@ graph TB
     subgraph Hardware["Hardware"]
         Webcam["USB Webcam"]
         ESP32Sender["ESP32 Sender<br/>(USB Serial)"]
-        ESP32Camera["ESP32-S3 Camera<br/>(WiFi)"]
+        ESP32Camera["ESP32-CAM<br/>(MJPEG server, WiFi)"]
     end
     
     Webcam -->|"Video frames"| HandTracker
@@ -384,8 +384,8 @@ graph TB
     SerialComm -->|"USB Serial"| ESP32Sender
     Config --> HandTracker
     
-    CameraViewer -->|"UDP Discovery<br/>(Port 5001)"| ESP32Camera
-    ESP32Camera -->|"UDP Stream<br/>(Port 5000)<br/>Fragmented JPEG"| CameraViewer
+    CameraViewer -->|"HTTP GET<br/>/mjpeg/1"| ESP32Camera
+    ESP32Camera -->|"HTTP MJPEG<br/>multipart stream"| CameraViewer
     
     HandTracker -.-> OpenCV
     HandTracker -.-> MediaPipeLib
@@ -491,9 +491,9 @@ graph LR
     end
     
     subgraph CameraApp["Camera Viewer Application"]
-        Viewer["camera_viewer.py<br/>(Main Loop)"]
-        HTTPClient["HTTP Client<br/>(Requests)"]
-        MJPEGDecoder["MJPEG Decoder<br/>(Stream)"]
+        Viewer["mjpeg_viewer.py<br/>(Main Loop)"]
+        HTTPClient["HTTP Client<br/>(GET /mjpeg/1)"]
+        MJPEGParser["MJPEG Stream Parser<br/>(multipart decode)"]
         Display["OpenCV Display<br/>(Window)"]
     end
     
@@ -506,10 +506,9 @@ graph LR
     ConfigFile --> Main
     ConfigFile --> SerialMgr
     
-    Viewer --> UDPReceiver
-    UDPReceiver --> FrameReconstructor
-    FrameReconstructor --> JPEGDecoder
-    JPEGDecoder --> Display
+    Viewer --> HTTPClient
+    HTTPClient --> MJPEGParser
+    MJPEGParser --> Display
     
     classDef main fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef process fill:#00C853,stroke:#007E33,stroke-width:2px,color:#fff
@@ -517,9 +516,21 @@ graph LR
     classDef config fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
     
     class Main,Viewer main
-    class Capture,Detection,Analysis,Filtering,UDPReceiver,FrameReconstructor,JPEGDecoder,Display process
+    class Capture,Detection,Analysis,Filtering,HTTPClient,MJPEGParser,Display process
     class SerialMgr,CommandSender comm
     class ConfigFile config
+```
+
+### 3.6 Camera Firmware Source
+
+Vehicle camera streaming uses firmware based on the forked repository [arkhipenko/esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) (BSD-3-Clause). The ESP32-CAM runs an MJPEG multiclient server; the PC connects via HTTP and displays the stream with `pc_side/ESP-CAM/mjpeg_viewer.py`.
+
+```mermaid
+graph LR
+    Viewer["PC<br/>mjpeg_viewer.py"]
+    Firmware["ESP32-CAM<br/>MJPEG server<br/>forked repo"]
+    Viewer -->|"HTTP GET<br/>/mjpeg/1"| Firmware
+    Firmware -->|"multipart stream"| Viewer
 ```
 
 ---
@@ -581,58 +592,33 @@ The system uses a **simple binary protocol** with single-byte commands:
 └─────────────────────────────────────────┘
 ```
 
-### 4.3 UDP Camera Protocol (ESP32-S3 → PC)
+### 4.3 HTTP MJPEG Camera Protocol (ESP32-CAM → PC)
 
-The camera system uses **UDP** for video streaming with JPEG frame fragmentation:
+The camera system uses **HTTP MJPEG** for video streaming. The vehicle camera runs firmware based on the forked repository [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) (MJPEG multiclient server, up to 10 clients).
 
-#### UDP Packet Format
+#### Protocol
 
-```
-┌─────────────────────────────────────────┐
-│  Packet Header (8 bytes)                │
-├─────────────────────────────────────────┤
-│  frame_id:      uint32_t (4 bytes)      │
-│  fragment_id:   uint16_t (2 bytes)      │
-│  total_fragments: uint16_t (2 bytes)    │
-├─────────────────────────────────────────┤
-│  Fragment Data (max 1392 bytes)         │
-│  JPEG frame data (fragmented)          │
-└─────────────────────────────────────────┘
-```
+- **Request** : HTTP GET to `http://<camera_ip>/mjpeg/1`
+- **Response** : `multipart/x-mixed-replace` stream with boundary (e.g. `+++===123454321===+++`)
+- **Firmware** : [arkhipenko/esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) (BSD-3-Clause)
 
-#### Characteristics
-
-- **UDP ports** : 5000 (stream), 5001 (discovery)
-- **Max packet size** : 1400 bytes (UDP safe size)
-- **Data per packet** : 1392 bytes (1400 - 8 header)
-- **Fragmentation** : JPEG frames fragmented if > 1392 bytes
-- **Reconstruction** : PC reconstructs frames from fragments
-- **Discovery** : UDP broadcast on port 5001 for auto-discovery
-
-#### UDP Camera Flow
+#### HTTP MJPEG Flow
 
 ```mermaid
 sequenceDiagram
-    participant PC as PC (Camera Viewer)
-    participant ESP32 as ESP32-S3 Camera
+    participant PC as PC (MJPEG Viewer)
+    participant ESP32 as ESP32-CAM (MJPEG server)
     participant Camera as Camera Hardware
     
-    Note over PC,ESP32: Discovery Phase (Port 5001)
-    PC->>ESP32: UDP Broadcast "DISCOVER_CAMERA_VIEWER"
-    ESP32->>PC: UDP "CAMERA_IP: <IP>"
-    PC->>ESP32: UDP "VIEWER_IP: <PC_IP>"
+    PC->>ESP32: HTTP GET /mjpeg/1
+    ESP32->>PC: 200 OK multipart/x-mixed-replace
     
-    Note over PC,ESP32: Streaming Phase (Port 5000)
-    loop Frame Capture & Send
+    loop Stream frames
         Camera->>ESP32: Capture JPEG frame
-        ESP32->>ESP32: Fragment frame (if > 1392 bytes)
-        loop For each fragment
-            ESP32->>PC: UDP Packet (Header + Fragment)
-            Note right of ESP32: frame_id, fragment_id,<br/>total_fragments
-        end
-        PC->>PC: Reconstruct frame from fragments
-        PC->>PC: Validate JPEG (0xFFD8...0xFFD9)
-        PC->>PC: Decode & Display (OpenCV)
+        ESP32->>ESP32: Encode as MJPEG part
+        ESP32->>PC: Multipart chunk (boundary + JPEG)
+        PC->>PC: Parse multipart stream
+        PC->>PC: Decode JPEG & Display (OpenCV)
     end
 ```
 
@@ -671,13 +657,13 @@ graph TB
         MotorDrivers -->|"Power"| MotorsHW
     end
     
-    subgraph Camera2PC["ESP32-S3 Camera → PC"]
-        CameraESP["ESP32-S3 Camera"]
-        UDPStream["UDP Stream<br/>Port 5000<br/>Fragmented JPEG"]
-        PCViewer["Camera Viewer<br/>(Python)"]
+    subgraph Camera2PC["ESP32-CAM → PC"]
+        CameraESP["ESP32-CAM<br/>(MJPEG server)"]
+        HTTPStream["HTTP MJPEG<br/>/mjpeg/1"]
+        PCViewer["MJPEG Viewer<br/>(mjpeg_viewer.py)"]
         
-        CameraESP -->|"UDP Packets<br/>(Fragmented)"| UDPStream
-        UDPStream -->|"Reconstruct"| PCViewer
+        CameraESP -->|"multipart stream"| HTTPStream
+        HTTPStream -->|"Parse multipart<br/>Decode"| PCViewer
     end
     
     PC2Sender --> Sender2Vehicle
@@ -693,7 +679,7 @@ graph TB
     class SenderApp,SenderESP sender
     class VehicleESP,VehicleController,MotorTask vehicle
     class MotorDrivers,MotorsHW,CameraESP hardware
-    class USBPort,ESPNowLink,CommandQueue,UDPStream comm
+    class USBPort,ESPNowLink,CommandQueue,HTTPStream comm
 ```
 
 ---
@@ -708,11 +694,11 @@ graph TB
 | **PC - Vision** | OpenCV | 4.5+ |
 | **PC - Gestures** | MediaPipe | 0.10.9 |
 | **PC - Serial** | PySerial | 3.5+ |
-| **PC - UDP** | Python socket | Standard |
+| **PC - Camera** | HTTP (requests) | MJPEG viewer |
 | **ESP32** | ESP-IDF / Arduino | Latest |
 | **RTOS** | FreeRTOS | (Included) |
 | **Wireless** | ESP-NOW | 2.4GHz |
-| **Wireless** | WiFi UDP | 2.4GHz |
+| **Camera stream** | HTTP MJPEG | esp32-mjpeg-multiclient-espcam-drivers |
 | **Build System** | PlatformIO | Latest |
 
 ### 5.2 Technical Characteristics
@@ -721,9 +707,9 @@ graph TB
 - **Motor control frequency** : 100 Hz (10 ms)
 - **Sensor frequency** : 20 Hz (50 ms)
 - **Command protocol** : Binary (1 byte per command)
-- **Camera protocol** : UDP (fragmented JPEG)
+- **Camera protocol** : HTTP MJPEG
 - **Vehicle communication** : ESP-NOW (no WiFi AP)
-- **Camera communication** : WiFi UDP (port 5000)
+- **Camera communication** : WiFi HTTP (multipart stream, `/mjpeg/1`)
 - **Architecture** : Multi-task (FreeRTOS)
 
 ---

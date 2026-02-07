@@ -201,22 +201,6 @@ bool espnow_send_mode_status(uint8_t mode) {
     return espnow_send_bytes(frame, sizeof(frame));
 }
 
-bool espnow_get_mac_string(char* mac_str, size_t len) {
-    if (mac_str == NULL || len < 18) {
-        return false;
-    }
-    
-    uint8_t mac[6];
-    if (esp_wifi_get_mac(WIFI_IF_STA, mac) != ESP_OK) {
-        return false;
-    }
-    
-    snprintf(mac_str, len, "%02X:%02X:%02X:%02X:%02X:%02X",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    
-    return true;
-}
-
 bool espnow_is_connected() {
     return espnow_connected;
 }

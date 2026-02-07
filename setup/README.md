@@ -13,19 +13,19 @@ Follow these steps to set up the project. Just copy and paste the commands.
 
 ```bash
 cd /path/to/final-project-gesture-car
-./setup/install_dependencies.sh
+./setup/install_dependencies_pipenv.sh
 ```
 
 Or if you're already in the project root:
 
 ```bash
-./setup/install_dependencies.sh
+./setup/install_dependencies_pipenv.sh
 ```
 
 **If you get a "permission denied" error, make the script executable first:**
 ```bash
-chmod +x setup/install_dependencies.sh
-./setup/install_dependencies.sh
+chmod +x setup/install_dependencies_pipenv.sh
+./setup/install_dependencies_pipenv.sh
 ```
 
 ### Windows

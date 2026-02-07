@@ -519,6 +519,5 @@ Main viewer loop (capture → display).
 
 **For user-facing documentation, see component-specific READMEs:**
 - [Hand Tracking README](../pc_side/Hand_Tracking/README.md)
-- [Camera Module README](../pc_side/ESP_Camera_Module/README.md)
 - [Sender README](../pc_side/Sender_Code/README.md)
 

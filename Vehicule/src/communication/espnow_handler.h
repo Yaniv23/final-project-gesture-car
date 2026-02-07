@@ -54,13 +54,6 @@ bool espnow_send_handshake_ack(uint8_t status_byte);
 bool espnow_send_mode_status(uint8_t mode);
 
 /**
- * @brief Get MAC address as string (for debugging)
- * @param mac_str Output buffer (must be at least 18 bytes)
- * @return true if successful
- */
-bool espnow_get_mac_string(char* mac_str, size_t len);
-
-/**
  * @brief Check if ESP-NOW connection is established
  * @return true if connected (first message received), false otherwise
  */

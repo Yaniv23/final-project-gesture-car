@@ -18,14 +18,15 @@ Or run components individually:
 # Terminal 1: Hand tracking
 cd Hand_Tracking && python Hand_Tracker.py
 
-# Terminal 2: Camera stream viewer
-cd ESP_Camera_Module/src && python camera_viewer.py
+# Terminal 2: Camera stream viewer (from project root)
+python pc_side/ESP-CAM/mjpeg_viewer.py
+# Or: cd ESP-CAM && python mjpeg_viewer.py
 ```
 
 ## 📋 Key Features
 
 - **👋 Hand Gesture Recognition**: Real-time hand tracking using MediaPipe with 12+ gesture types
-- **📹 Live Video Streaming**: View vehicle camera feed via WiFi UDP stream
+- **📹 Live Video Streaming**: View vehicle camera feed via HTTP MJPEG stream (multiclient server)
 - **📡 Wireless Command Bridge**: ESP32 sender bridges USB Serial to ESP-NOW protocol
 - **⚡ Low Latency**: < 20ms command transmission from gesture to vehicle
 - **🔄 Stability Filtering**: Prevents command jitter with frame-based confirmation
@@ -38,15 +39,15 @@ cd ESP_Camera_Module/src && python camera_viewer.py
 graph TB
     subgraph PC["🖥️ PC Components (Python)"]
         HandTracker["Hand Tracker<br/>━━━━━━━━━━━━━━━━<br/>• MediaPipe hand detection<br/>• Gesture recognition<br/>• USB Serial output<br/>• Visual feedback"]
-        CameraViewer["Camera Viewer<br/>━━━━━━━━━━━━━━━━<br/>• UDP stream receiver<br/>• Fragmented JPEG decoder<br/>• OpenCV display<br/>• Auto-discovery"]
+        CameraViewer["MJPEG Viewer<br/>mjpeg_viewer.py<br/>━━━━━━━━━━━━━━━━<br/>• HTTP stream<br/>• /mjpeg/1<br/>• Multipart decode<br/>• OpenCV display"]
     end
     
     subgraph ESP32Sender["📡 ESP32 Sender (Bridge)"]
         Sender["ESP32 Sender<br/>━━━━━━━━━━━━━━━━<br/>• USB Serial input<br/>• Command conversion<br/>• ESP-NOW transmission<br/>• Handshake protocol"]
     end
     
-    subgraph ESP32Camera["📹 ESP32-S3 Camera"]
-        Camera["ESP32-S3 Camera<br/>━━━━━━━━━━━━━━━━<br/>• OV2640 camera<br/>• WiFi UDP stream<br/>• Fragmented JPEG<br/>• Auto-discovery"]
+    subgraph ESP32Camera["📹 ESP32-CAM"]
+        Camera["ESP32-CAM<br/>MJPEG server<br/>━━━━━━━━━━━━━━━━<br/>• WiFi HTTP MJPEG<br/>• Multiclient<br/>• esp32-mjpeg-multiclient-espcam-drivers"]
     end
     
     subgraph Vehicle["🚗 Vehicle Controller"]
@@ -55,7 +56,7 @@ graph TB
     
     HandTracker -->|USB Serial<br/>115200 baud<br/>Text commands| Sender
     Sender -->|ESP-NOW<br/>2.4GHz Wireless<br/>Binary protocol| Controller
-    CameraViewer <-->|WiFi UDP<br/>Port 5000<br/>Fragmented JPEG| Camera
+    CameraViewer <-->|WiFi HTTP MJPEG<br/>/mjpeg/1| Camera
     
     classDef pcStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef esp32Style fill:#00C853,stroke:#007E33,stroke-width:3px,color:#fff
@@ -90,12 +91,12 @@ sequenceDiagram
     Vehicle->>Vehicle: Execute movement
     
     Note over Camera,Viewer: Video Stream Flow
+    Viewer->>Camera: HTTP GET /mjpeg/1
+    Camera->>Viewer: 200 OK multipart MJPEG stream
     Camera->>Camera: Capture frame<br/>(OV2640)
     Camera->>Camera: JPEG encode
-    Camera->>Camera: Fragment packet<br/>(UDP max 1472 bytes)
-    Camera->>Viewer: WiFi UDP<br/>Fragmented JPEG
-    Viewer->>Viewer: Reassemble fragments
-    Viewer->>Viewer: Decode JPEG
+    Camera->>Viewer: Multipart chunk (boundary + JPEG)
+    Viewer->>Viewer: Parse multipart & decode JPEG
     Viewer->>User: Display frame
 ```
 
@@ -122,26 +123,27 @@ python Hand_Tracker.py
 
 **Documentation**: See [Hand Tracking README](Hand_Tracking/README.md) for detailed information.
 
-### 2. Camera Module (`ESP_Camera_Module/`)
+### 2. Camera Stream – MJPEG Viewer (`ESP-CAM/`)
 
-**Purpose**: Receives and displays live video stream from ESP32-S3 camera module.
+**Purpose**: Receives and displays live HTTP MJPEG stream from ESP32-CAM. The camera firmware is based on the forked repository [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers).
 
 **Key Features**:
-- Auto-discovery via UDP broadcast (port 5001)
-- Fragmented JPEG reassembly
+- HTTP client for `/mjpeg/1` stream
+- Multipart MJPEG parsing
 - Real-time video display using OpenCV
-- Frame statistics and error handling
-- Low-latency streaming
+- Flip and rotation controls (keyboard shortcuts)
+- Multiclient server (multiple viewers can connect)
 
-**Technology**: Python, OpenCV, UDP sockets
+**Technology**: Python, OpenCV, HTTP (requests)
 
 **Quick Setup**:
 ```bash
-cd ESP_Camera_Module/src
-python camera_viewer.py
+# From project root
+python pc_side/ESP-CAM/mjpeg_viewer.py
+# Or: cd ESP-CAM && python mjpeg_viewer.py
 ```
 
-**Documentation**: See [Camera Module README](ESP_Camera_Module/README.md) for detailed information.
+**Documentation**: See [Architecture Documentation](../docs/architecture.md) (Section 3.6, 4.3) for camera protocol and firmware source.
 
 ### 3. ESP32 Sender (`Sender_Code/`)
 
@@ -180,11 +182,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A[OV2640 Camera] -->|Capture| B[ESP32-S3]
-    B -->|JPEG Encode| C[Fragment Packets]
-    C -->|WiFi UDP<br/>Port 5000| D[Camera Viewer]
-    D -->|Reassemble| E[JPEG Decode]
-    E -->|OpenCV| F[Display Frame]
+    A[OV2640 Camera] -->|Capture| B[ESP32-CAM]
+    B -->|HTTP MJPEG<br/>/mjpeg/1| D[MJPEG Viewer]
+    D -->|Parse multipart<br/>Decode JPEG| E[OpenCV Display]
+    E --> F[Display Frame]
     
     style A fill:#FF6F00,color:#fff
     style B fill:#00C853,color:#fff
@@ -205,14 +206,13 @@ flowchart LR
 
 1. **Hand Tracker**: Think of it as a translator - it watches your hand and translates gestures into commands
 2. **ESP32 Sender**: Acts like a wireless bridge - takes commands from your PC and sends them wirelessly to the vehicle
-3. **Camera Viewer**: Like a video call - receives video packets from the vehicle and displays them on your screen
+3. **MJPEG Viewer**: Receives the HTTP MJPEG stream from the vehicle camera (multiclient server) and displays it on your screen
 
 ### Common Concepts
 
 - **USB Serial**: A way for your PC to talk to ESP32 devices via USB cable (like a chat window)
 - **ESP-NOW**: A fast wireless protocol for ESP32 devices to communicate (like Bluetooth but faster)
-- **UDP**: A network protocol for sending data packets (like sending postcards - fast but no guarantee of delivery)
-- **Fragmented JPEG**: Large images split into smaller pieces for transmission (like sending a large file in chunks)
+- **HTTP MJPEG**: The camera stream uses HTTP; the ESP32-CAM serves MJPEG video at `http://<camera_ip>/mjpeg/1` (multipart stream)
 
 ### Debugging Tips
 
