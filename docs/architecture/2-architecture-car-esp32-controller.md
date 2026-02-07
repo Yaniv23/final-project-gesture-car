@@ -1,31 +1,31 @@
-# 2. Architecture Véhicule (ESP32 Controller)
+# 2. Architecture Car (ESP32 Controller)
 
-## 2.1 Vue d'Ensemble du Contrôleur
+## 2.1 Controller Overview
 
-Le contrôleur véhicule utilise **FreeRTOS** pour gérer plusieurs tâches concurrentes avec des priorités différentes. Il supporte **2 modes de conduite** : **MANUAL** et **AUTONOMOUS**.
+The car controller uses **FreeRTOS** to manage multiple concurrent tasks with different priorities. It supports **2 driving modes**: **MANUAL** and **AUTONOMOUS**.
 
-## 2.2 Schéma Architecture Véhicule - Vue Globale
+## 2.2 Car Architecture Diagram - Global View
 
 ```mermaid
 graph TB
     subgraph VehicleController["🚗 ESP32 Vehicle Controller"]
         subgraph FreeRTOS["FreeRTOS Scheduler"]
-            subgraph HighPriority["🔴 Priorité Haute"]
+            subgraph HighPriority["🔴 High Priority"]
                 MotorControl["Motor Control<br/>Priority 4<br/>10ms"]
             end
             
-            subgraph MediumPriority["🟡 Priorité Moyenne"]
+            subgraph MediumPriority["🟡 Medium Priority"]
                 SensorFusion["Sensor Fusion<br/>Priority 3<br/>50ms"]
                 Autonomous["Autonomous<br/>Priority 3<br/>50ms"]
                 Communication["Communication<br/>Priority 2<br/>100ms"]
             end
             
-            subgraph LowPriority["🟢 Priorité Basse"]
+            subgraph LowPriority["🟢 Low Priority"]
                 Telemetry["Telemetry<br/>Priority 1<br/>100ms"]
             end
         end
         
-        subgraph SharedResources["Ressources Partagées"]
+        subgraph SharedResources["Shared Resources"]
             CommandQueue["Command Queue<br/>(FreeRTOS Queue)"]
             ModeManager["Mode Manager<br/>(Singleton)"]
             MotorDriver["Motor Driver<br/>(4 Motors)"]
@@ -41,17 +41,17 @@ graph TB
     ESPNOW["ESP-NOW<br/>Wireless"]
     
     ESPNOW -->|"Commandes"| Communication
-    Communication -->|"Envoie"| CommandQueue
-    CommandQueue -->|"Lit"| MotorControl
-    CommandQueue -->|"Lit"| Autonomous
-    ModeManager -->|"État mode"| MotorControl
-    ModeManager -->|"État mode"| Autonomous
+    Communication -->|"Send"| CommandQueue
+    CommandQueue -->|"Read"| MotorControl
+    CommandQueue -->|"Read"| Autonomous
+    ModeManager -->|"Mode state"| MotorControl
+    ModeManager -->|"Mode state"| Autonomous
     MotorControl -->|"PWM"| MotorDriver
     Autonomous -->|"Commandes"| CommandQueue
-    SensorFusion -->|"Lecture"| Ultrasonic
-    SensorFusion -->|"Contrôle"| Servo
-    MotorDriver -->|"Signaux"| Motors
-    Telemetry -->|"Statut"| ESPNOW
+    SensorFusion -->|"Read"| Ultrasonic
+    SensorFusion -->|"Control"| Servo
+    MotorDriver -->|"Signals"| Motors
+    Telemetry -->|"Status"| ESPNOW
     
     classDef highPriority fill:#F44336,stroke:#C62828,stroke-width:3px,color:#fff
     classDef mediumPriority fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
@@ -68,7 +68,7 @@ graph TB
     class ESPNOW comm
 ```
 
-## 2.3 Architecture des Tasks (Détails)
+## 2.3 Task Architecture (Details)
 
 ```mermaid
 graph LR
@@ -101,53 +101,53 @@ graph LR
     class T6 task6
 ```
 
-## 2.4 Modes de Conduite
+## 2.4 Driving Modes
 
-Le système supporte **2 modes de conduite** gérés par le `ModeManager` :
+The system supports **2 driving modes** managed by the `ModeManager`:
 
 ### Mode MANUAL
-- Contrôle via gestes de la main (PC → ESP32 Sender → Vehicle)
-- Commandes reçues via ESP-NOW
-- Réactivité temps réel (< 20ms)
+- Control via hand gestures (PC → ESP32 Sender → Vehicle)
+- Commands received via ESP-NOW
+- Real-time responsiveness (< 20ms)
 
 ### Mode AUTONOMOUS
-- Navigation autonome avec évitement d'obstacles
-- Utilise capteur ultrasonique + servo pour scanning
-- Détection de blocage (stuck detection)
-- Algorithme de navigation avec scan 3 directions
+- Autonomous navigation with obstacle avoidance
+- Uses ultrasonic sensor + servo for scanning
+- Stuck detection
+- Navigation algorithm with 3-direction scan
 
-## 2.5 Schéma des Modes
+## 2.5 Mode Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> MANUAL: Démarrage
+    [*] --> MANUAL: Startup
     
-    MANUAL --> AUTONOMOUS: CMD_MODE_AUTONOMOUS<br/>ou CMD_MODE_TOGGLE
-    AUTONOMOUS --> MANUAL: CMD_MODE_MANUAL<br/>ou CMD_MODE_TOGGLE
+    MANUAL --> AUTONOMOUS: CMD_MODE_AUTONOMOUS<br/>or CMD_MODE_TOGGLE
+    AUTONOMOUS --> MANUAL: CMD_MODE_MANUAL<br/>or CMD_MODE_TOGGLE
     
     state MANUAL {
         [*] --> WaitingCommand
-        WaitingCommand --> ProcessingCommand: Commande ESP-NOW
+        WaitingCommand --> ProcessingCommand: ESP-NOW command
         ProcessingCommand --> ExecutingMotion: Validation
-        ExecutingMotion --> WaitingCommand: Fin exécution
-        ExecutingMotion --> EmergencyStop: Obstacle détecté
-        EmergencyStop --> WaitingCommand: Obstacle évité
+        ExecutingMotion --> WaitingCommand: Execution complete
+        ExecutingMotion --> EmergencyStop: Obstacle detected
+        EmergencyStop --> WaitingCommand: Obstacle cleared
     }
     
     state AUTONOMOUS {
         [*] --> Forward
-        Forward --> Scan: Obstacle détecté
+        Forward --> Scan: Obstacle detected
         Scan --> Decision: Scan 3 directions
-        Decision --> Action: Choix direction
-        Action --> Forward: Mouvement exécuté
-        Action --> BackingUp: Toutes directions bloquées
-        BackingUp --> Scan: Recul terminé
-        Forward --> StuckPivoting: Blocage détecté
-        StuckPivoting --> Scan: Pivot terminé
+        Decision --> Action: Choose direction
+        Action --> Forward: Motion executed
+        Action --> BackingUp: All directions blocked
+        BackingUp --> Scan: Backup complete
+        Forward --> StuckPivoting: Stuck detected
+        StuckPivoting --> Scan: Pivot complete
     }
 ```
 
-## 2.6 Flux de Données - Mode MANUAL
+## 2.6 Data Flow - MANUAL Mode
 
 ```mermaid
 sequenceDiagram
@@ -159,19 +159,19 @@ sequenceDiagram
     participant Motor as Motor Control Task
     participant Motors as Motors
     
-    PC->>Sender: USB Serial (Commande)
-    Sender->>Vehicle: ESP-NOW (Commande binaire)
-    Vehicle->>Comm: Réception ESP-NOW
-    Comm->>Comm: Validation protocole
-    Comm->>Queue: Envoie commande
-    Queue->>Motor: Lecture commande
-    Motor->>Motor: Vérification mode (MANUAL)
-    Motor->>Motor: Exécution mouvement
-    Motor->>Motors: Contrôle PWM
-    Motors-->>PC: Mouvement effectué
+    PC->>Sender: USB Serial (Command)
+    Sender->>Vehicle: ESP-NOW (Binary command)
+    Vehicle->>Comm: ESP-NOW reception
+    Comm->>Comm: Protocol validation
+    Comm->>Queue: Send command
+    Queue->>Motor: Read command
+    Motor->>Motor: Mode check (MANUAL)
+    Motor->>Motor: Motion execution
+    Motor->>Motors: PWM control
+    Motors-->>PC: Motion completed
 ```
 
-## 2.7 Flux de Données - Mode AUTONOMOUS
+## 2.7 Data Flow - AUTONOMOUS Mode
 
 ```mermaid
 sequenceDiagram
@@ -184,30 +184,30 @@ sequenceDiagram
     participant Motors as Motors
     
     loop Navigation Loop (50ms)
-        Auto->>Sensor: Demande lecture distance
-        Sensor->>Ultrasonic: Lecture distance
+        Auto->>Sensor: Request distance reading
+        Sensor->>Ultrasonic: Read distance
         Ultrasonic-->>Sensor: Distance (cm)
-        Sensor-->>Auto: Distance filtrée
+        Sensor-->>Auto: Filtered distance
         
-        alt Obstacle détecté (< 18cm)
+        alt Obstacle detected (< 18cm)
             Auto->>Servo: Scan 3 directions (45°, 90°, 135°)
-            Servo-->>Auto: Positions servo
-            Auto->>Ultrasonic: Mesures multiples
+            Servo-->>Auto: Servo positions
+            Auto->>Ultrasonic: Multiple readings
             Ultrasonic-->>Auto: Distances (L, C, R)
-            Auto->>Auto: Décision direction
-            Auto->>Queue: Commande mouvement
-            Queue->>Motor: Lecture commande
-            Motor->>Motor: Vérification mode (AUTONOMOUS)
-            Motor->>Motors: Exécution mouvement
-        else Pas d'obstacle
-            Auto->>Queue: Commande FORWARD
-            Queue->>Motor: Lecture commande
-            Motor->>Motors: Avancement continu
+            Auto->>Auto: Direction decision
+            Auto->>Queue: Motion command
+            Queue->>Motor: Read command
+            Motor->>Motor: Mode check (AUTONOMOUS)
+            Motor->>Motors: Motion execution
+        else No obstacle
+            Auto->>Queue: FORWARD command
+            Queue->>Motor: Read command
+            Motor->>Motors: Continuous forward
         end
     end
 ```
 
-## 2.8 Structure des Couches Logiciel
+## 2.8 Software Layer Structure
 
 ```mermaid
 graph TB
