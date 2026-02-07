@@ -1,7 +1,7 @@
 /**
  * @file motion_control.cpp
  * @brief Motion control implementation
- * @details Based on Vehicule_Controller.ino motion functions
+ * @details Based on legacy Vehicle_Controller.ino motion functions
  */
 
 #include "motion_control.h"

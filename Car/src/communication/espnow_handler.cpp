@@ -1,7 +1,7 @@
 /**
  * @file espnow_handler.cpp
  * @brief ESP-NOW handler implementation for binary command protocol
- * @details Based on Vehicule_Controller.ino ESP-NOW implementation
+ * @details Based on legacy Vehicle_Controller.ino ESP-NOW implementation
  */
 
 #include <Arduino.h>
@@ -89,7 +89,7 @@ bool espnow_init(bool simulation_mode) {
     // Normal mode: Initialize WiFi and ESP-NOW
     Serial.println("🔧 ESP32 set to STA mode");
     
-    // Set WiFi to station mode (matching Vehicule_Controller.ino)
+    // Set WiFi to station mode (matching legacy Vehicle_Controller.ino)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();  // Disconnect from any previous connection
     
@@ -121,7 +121,7 @@ bool espnow_init(bool simulation_mode) {
     Serial.print("[ESP-NOW] WiFi channel set to: ");
     Serial.println(ESPNOW_WIFI_CHANNEL);
     
-    // Print MAC address using esp_wifi_get_mac (matching Vehicule_Controller.ino)
+    // Print MAC address using esp_wifi_get_mac (matching legacy Vehicle_Controller.ino)
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
