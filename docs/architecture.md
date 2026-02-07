@@ -738,7 +738,7 @@ graph TB
 
 ## 7. Autonomous Mode - Conceptual Simplified Design (Not Implemented)
 
-This section describes a **conceptual** simplified 3-state FSM design. The **current** implementation is in [Section 8](#8-autonomous-mode---current-implementation-task_autonomouscpp) and in `Vehicule/src/tasks/task_autonomous.cpp`. The codebase does **not** contain separate `obstacle_detection/` or `navigation/` modules; autonomous logic lives in `task_autonomous.cpp` with hardcoded timings and thresholds (not in `config.h`).
+This section describes a **conceptual** simplified 3-state FSM design. The **current** implementation is in [Section 8](#8-autonomous-mode---current-implementation-task_autonomouscpp) and in `Car/src/tasks/task_autonomous.cpp`. The codebase does **not** contain separate `obstacle_detection/` or `navigation/` modules; autonomous logic lives in `task_autonomous.cpp` with hardcoded timings and thresholds (not in `config.h`).
 
 ### 7.1 Overview (Conceptual)
 
@@ -906,7 +906,7 @@ The following modules are **not** present in the repository. Autonomous logic is
 
 ### 7.5 Configuration (Actual vs Conceptual)
 
-**Actual:** [Vehicule/src/config.h](Vehicule/src/config.h) contains task periods and hardware pins but **no** AUTO_* autonomous parameters. Obstacle threshold (20 cm), rear threshold (15 cm), stuck threshold (40 cm), backup (800 ms), turn (1200 ms), recovery (800 ms), and scan angles (10°, 90°, 180°) are **hardcoded** in [task_autonomous.cpp](Vehicule/src/tasks/task_autonomous.cpp).
+**Actual:** [Car/src/config.h](Car/src/config.h) contains task periods and hardware pins but **no** AUTO_* autonomous parameters. Obstacle threshold (20 cm), rear threshold (15 cm), stuck threshold (40 cm), backup (800 ms), turn (1200 ms), recovery (800 ms), and scan angles (10°, 90°, 180°) are **hardcoded** in [task_autonomous.cpp](Car/src/tasks/task_autonomous.cpp).
 
 ### 7.6 Conceptual Performance
 
@@ -969,7 +969,7 @@ See also: [obstacle-detection-flow.md](architecture/obstacle-detection-flow.md) 
 
 ### 8.1 Overview
 
-Autonomous mode is implemented directly in the FreeRTOS task `task_autonomous` (file `Vehicule/src/tasks/task_autonomous.cpp`). The logic follows a simple loop:
+Autonomous mode is implemented directly in the FreeRTOS task `task_autonomous` (file `Car/src/tasks/task_autonomous.cpp`). The logic follows a simple loop:
 
 - **Advance in short steps** in a straight line.
 - **Read front distance** from `SensorState` (updated by the Sensors task).
@@ -978,7 +978,7 @@ Autonomous mode is implemented directly in the FreeRTOS task `task_autonomous` (
 - **Pick the clearest direction** and execute the corresponding rotation (1200 ms turn, 800 ms recovery rotate).
 - **Apply "stuck" recovery** (up to 3 attempts, 800 ms each) if max distance ≤ 40 cm.
 
-This implementation is intentionally **blocking and local** to the autonomous task for simplicity. Autonomous timings and thresholds are **hardcoded** in `task_autonomous.cpp`; [config.h](Vehicule/src/config.h) does not define AUTO_* parameters.
+This implementation is intentionally **blocking and local** to the autonomous task for simplicity. Autonomous timings and thresholds are **hardcoded** in `task_autonomous.cpp`; [config.h](Car/src/config.h) does not define AUTO_* parameters.
 
 ### 8.2 Flow Diagram - `task_autonomous`
 
@@ -1046,7 +1046,7 @@ The internal function `scanThreeDirections(servo)` performs a scan in three posi
 - **Scan angles** : `{10°, 90°, 180°}` (right, center, left). Indices 0 = right, 1 = center, 2 = left.
 - **Per position** :
   - Move servo to target angle (non-blocking),
-  - Stabilization delay: `SENSOR_READ_INTERVAL_MS` (60 ms from [config.h](Vehicule/src/config.h)),
+  - Stabilization delay: `SENSOR_READ_INTERVAL_MS` (60 ms from [config.h](Car/src/config.h)),
   - **20 samples** per direction with `SENSOR_READ_INTERVAL_MS` between reads; each sample via `readFrontSensorRaw(&raw)`.
 - **Filtering** :
   - Keep only distances `0 < d < 400 cm`,

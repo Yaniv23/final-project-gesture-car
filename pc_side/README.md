@@ -196,7 +196,7 @@ flowchart LR
 ## 🔗 Related Documentation
 
 - **[Main Project README](../README.md)** - Complete system overview
-- **[Vehicle Controller](../Vehicule/README.md)** - ESP32 vehicle control system
+- **[Vehicle Controller](../Car/README.md)** - ESP32 vehicle control system
 - **[Architecture Documentation](../docs/architecture.md)** - System architecture details
 - **[PC Side Components Technical Details](../docs/PC_SIDE_COMPONENTS.md)** - Technical reference
 
