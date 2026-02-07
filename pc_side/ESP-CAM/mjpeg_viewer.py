@@ -22,7 +22,6 @@ import requests
 import re
 import sys
 import time
-from io import BytesIO
 
 # Configuration
 DEFAULT_IP = "172.20.10.2"
@@ -113,9 +112,19 @@ class MJPEGViewer:
     
     def parse_multipart_stream(self, response):
         """Parse multipart/x-mixed-replace stream and yield JPEG frames."""
-        boundary_marker = f"--{BOUNDARY}".encode()
-        boundary_with_crlf = f"\r\n--{BOUNDARY}\r\n".encode()
-        boundary_end = f"\r\n--{BOUNDARY}--\r\n".encode()
+        # Determine multipart boundary from the HTTP Content-Type header, falling back to default.
+        content_type = response.headers.get("Content-Type", "")
+        boundary_str = None
+        if content_type:
+            match = re.search(r'boundary="?([^";]+)"?', content_type, re.IGNORECASE)
+            if match:
+                boundary_str = match.group(1)
+        if not boundary_str:
+            boundary_str = BOUNDARY
+        boundary_bytes = boundary_str.encode()
+        boundary_marker = b"--" + boundary_bytes
+        boundary_with_crlf = b"\r\n--" + boundary_bytes + b"\r\n"
+        boundary_end = b"\r\n--" + boundary_bytes + b"--\r\n"
         
         buffer = b""
         content_length = None
@@ -163,8 +172,8 @@ class MJPEGViewer:
                                 frame_array = np.frombuffer(frame_data, dtype=np.uint8)
                                 frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
                                 if frame is not None:
-                                    yield frame
                                     self.frame_count += 1
+                                    yield frame
                                 else:
                                     print(f"Warning: Failed to decode frame (size: {len(frame_data)})")
                             except Exception as e:
@@ -253,7 +262,7 @@ class MJPEGViewer:
             response = requests.get(
                 self.stream_url,
                 stream=True,
-                timeout=None,  # No timeout for streaming
+                timeout=(CONNECTION_TIMEOUT, None),  # Finite connect timeout, no read timeout for streaming
                 headers={'Connection': 'keep-alive'}
             )
             response.raise_for_status()
