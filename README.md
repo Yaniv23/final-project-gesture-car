@@ -8,25 +8,18 @@ A hands-on robotics project that lets you control a mecanum-wheeled car using ha
 # Install dependencies
 pip install -r requirements.txt
 
-# Start the system (hand tracking + camera stream)
+# Run hand tracking and ESP-CAM module (use launch.sh)
 ./launch.sh
 ```
 
-Or manually:
-```bash
-# Terminal 1: Hand tracking
-cd pc_side/Hand_Tracking && python Hand_Tracker.py
-
-# Terminal 2: Camera stream
-cd pc_side/ESP_Camera_Module && ./start_stream.sh
-```
+To run only one component: `./launch.sh --cam-only` or `./launch.sh --hand-only`. See [Running the System](#-running-the-system) for details.
 
 ## 📋 Key Features
 
 - **👋 Hand Gesture Control**: Control the car with natural hand movements using MediaPipe
 - **🚗 Mecanum Wheel Drive**: Full omnidirectional movement (forward, backward, strafe, rotate, diagonal)
 - **🤖 Autonomous Mode**: Obstacle avoidance with ultrasonic sensor and servo scanning
-- **📹 Live Video Streaming**: Real-time video feed from ESP32-S3 camera module
+- **📹 Live Video Streaming**: Real-time video feed from ESP32-CAM via HTTP MJPEG (multiclient server)
 - **⚡ Real-Time Control**: FreeRTOS-based vehicle controller with < 20ms latency
 - **🔒 Safety Systems**: Watchdog, emergency stop, timeout monitoring
 - **📡 Wireless Communication**: ESP-NOW protocol for low-latency command transmission
@@ -38,7 +31,7 @@ For detailed information on each component:
 - **[Vehicle Controller](Vehicule/README.md)** - ESP32 vehicle control system
   - [Technical Details](docs/VEHICLE_CONTROLLER.md) - Architecture, FreeRTOS, protocols
 - **[Hand Tracking](pc_side/Hand_Tracking/README.md)** - PC-side gesture recognition
-- **[Camera Module](pc_side/ESP_Camera_Module/README.md)** - ESP32-S3 video streaming
+- **[Camera Stream](pc_side/ESP-CAM/)** - MJPEG viewer; camera firmware based on [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers)
 - **[ESP32 Sender](pc_side/Sender_Code/README.md)** - Wireless command bridge
 - **[Architecture Documentation](docs/architecture.md)** - Complete system architecture
 
@@ -58,8 +51,8 @@ graph TB
         Sender["ESP32 Sender<br/>(USB Serial → ESP-NOW Bridge)"]
     end
     
-    subgraph ESP32Camera["📹 ESP32-S3 Camera"]
-        Camera["ESP32-S3 Camera<br/>(WiFi UDP Stream)"]
+    subgraph ESP32Camera["📹 ESP32-CAM"]
+        Camera["ESP32-CAM<br/>(WiFi HTTP MJPEG)"]
     end
     
     subgraph Vehicle["🚗 ESP32 Vehicle Controller"]
@@ -70,7 +63,7 @@ graph TB
     
     HandTracker -->|USB Serial<br/>115200 baud| Sender
     Sender -->|ESP-NOW<br/>2.4GHz Wireless| Controller
-    CameraViewer <-->|WiFi UDP<br/>Fragmented JPEG| Camera
+    CameraViewer <-->|WiFi HTTP MJPEG| Camera
     Controller --> Motors
     Controller --> Sensors
     
@@ -219,10 +212,11 @@ stateDiagram-v2
 - **Servo Motor**: SG90 or similar (for obstacle scanning)
 - **Ultrasonic Sensor**: HC-SR04
 
-#### 3. ESP32-S3 Camera Module
-- **Board**: ESP32-S3 development board with camera support
-- **Camera**: OV2640 camera module
+#### 3. ESP32-CAM (Vehicle Camera)
+- **Board**: ESP32-CAM or ESP32-S3 with camera support
+- **Camera**: OV2640 (or compatible) camera module
 - **Connection**: WiFi (2.4GHz network)
+- **Firmware**: Built from (or based on) the forked repository [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) — MJPEG multiclient streaming over HTTP
 
 ### Power Supply
 
@@ -252,7 +246,7 @@ pip install platformio
 
 PlatformIO is used to build and upload code to:
 - ESP32 Vehicle Controller
-- ESP32-S3 Camera Module
+- ESP32-CAM (firmware from esp32-mjpeg-multiclient-espcam-drivers fork)
 
 ## ⚙️ Configuration
 
@@ -278,14 +272,9 @@ Edit `pc_side/Sender_Code/Sender_Code.ino`:
 uint8_t receiverMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX}; 
 ```
 
-### 4. Build and Upload Camera Module
+### 4. Build and Upload Camera Firmware
 
-```bash
-cd pc_side/ESP_Camera_Module
-pio run -t upload
-```
-
-**Important**: Note the IP address printed in Serial Monitor!
+Build and flash the camera firmware from the forked repository [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) (or your fork). Note the camera IP address from Serial Monitor. On the PC, run `python pc_side/ESP-CAM/mjpeg_viewer.py` to view the stream (set or pass the camera IP if needed).
 
 ### 5. Configure Hand Tracking
 
@@ -312,14 +301,38 @@ COM_PORT = '/dev/ttyACM0'
 
 ## 🏃 Running the System
 
-### Quick Start
+To run the different programs (hand tracking and ESP-CAM module), use the **`launch.sh`** script from the project root.
+
+### Using launch.sh
 
 ```bash
-# Launch both hand tracking and camera stream
+# Launch both hand tracking and camera stream (default)
 ./launch.sh
+
+# Launch only the ESP32 camera (MJPEG viewer)
+./launch.sh --cam-only
+
+# Launch only the hand tracker
+./launch.sh --hand-only
+
+# Show script help
+./launch.sh --help
 ```
 
-The camera viewer will automatically discover the ESP32-S3 camera via UDP broadcast (port 5001) and receive the video stream on port 5000.
+The script opens separate terminal windows for each component. Connect to the ESP32-CAM HTTP MJPEG stream at `http://<camera_ip>/mjpeg/1` (the MJPEG viewer opens this when you run the camera).
+
+### Manual (alternative)
+
+To run components in your own terminals:
+
+```bash
+# Terminal 1: Hand tracking
+cd pc_side/Hand_Tracking && python Hand_Tracker.py
+
+# Terminal 2: Camera stream
+cd pc_side/ESP-CAM && python mjpeg_viewer.py
+# Or from project root: python pc_side/ESP-CAM/mjpeg_viewer.py
+```
 
 ## 📊 Key Technical Points
 
@@ -330,7 +343,7 @@ The camera viewer will automatically discover the ESP32-S3 camera via UDP broadc
 - **Sensor Update Rate**: 20Hz (50ms period)
 - **Autonomous Navigation**: 20Hz (50ms period)
 - **Communication Protocol**: Binary (1 byte/command)
-- **Video Streaming**: Fragmented JPEG over UDP (WiFi, port 5000)
+- **Video Streaming**: HTTP MJPEG (WiFi, `/mjpeg/1`)
 
 ### Architecture Highlights
 
@@ -348,17 +361,14 @@ final-project-gesture-car/
 ├── README.md                    # This file
 ├── requirements.txt            # Python dependencies
 ├── launch.sh                   # Quick start script
-├── run.sh                      # Alternative launch script
 │
 ├── pc_side/                    # PC-side components
 │   ├── Hand_Tracking/          # Hand gesture recognition
 │   │   ├── Hand_Tracker.py     # Main tracking script
 │   │   └── constant.py         # Serial port configuration
-│   ├── ESP_Camera_Module/      # ESP32-S3 camera streaming
-│   │   ├── src/
-│   │   │   ├── main.cpp        # Camera firmware
-│   │   │   └── camera_viewer.py # PC viewer
-│   │   └── README.md           # Camera documentation
+│   ├── ESP-CAM/                # PC-side MJPEG viewer
+│   │   └── mjpeg_viewer.py     # HTTP MJPEG viewer (flip/rotation)
+│   │   # Vehicle camera firmware: esp32-mjpeg-multiclient-espcam-drivers (forked)
 │   └── Sender_Code/            # ESP32 sender
 │       └── README.md           # Sender documentation
 │
@@ -392,12 +402,12 @@ pio run -t upload    # Build and upload
 pio device monitor   # Monitor serial output
 ```
 
-### Building Camera Module
+### Building Camera Firmware and Viewing Stream
 
-```bash
-cd pc_side/ESP_Camera_Module
-pio run -t upload
-pio device monitor   # To see IP address
-```
+Build and upload the camera firmware from the forked [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) repository. Then run `python pc_side/ESP-CAM/mjpeg_viewer.py` to view the stream (use the camera IP from Serial Monitor).
+
+## Thanks
+
+Thanks to [Anatoli Arkhipenko](https://github.com/arkhipenko) and the [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers) project for the ESP32 MJPEG multiclient streaming server used for the vehicle camera.
 
 **Happy Gesturing! 🚗👋**

@@ -5,7 +5,7 @@
 Le côté PC est composé de **2 applications Python principales** qui fonctionnent indépendamment :
 
 - **Hand Tracker** : Reconnaissance de gestes avec MediaPipe
-- **Camera Viewer** : Visualisation du stream vidéo depuis ESP32-S3
+- **MJPEG Viewer** : Visualisation du stream HTTP MJPEG depuis ESP32-CAM
 
 ## 3.2 Schéma Architecture PC
 
@@ -24,8 +24,8 @@ graph TB
             Config["constant.py<br/>━━━━━━━━━━━━━━━━<br/>• COM_PORT<br/>• BAUD_RATE<br/>• Thresholds"]
         end
         
-        subgraph CameraApp["Camera Viewer Application"]
-            CameraViewer["camera_viewer.py<br/>━━━━━━━━━━━━━━━━<br/>• UDP socket receiver<br/>• Frame reconstruction<br/>• JPEG decoding<br/>• OpenCV display"]
+        subgraph CameraApp["MJPEG Viewer Application"]
+            CameraViewer["mjpeg_viewer.py<br/>━━━━━━━━━━━━━━━━<br/>• HTTP client /mjpeg/1<br/>• Multipart MJPEG decode<br/>• OpenCV display<br/>• Flip/rotation controls"]
         end
         
         subgraph Dependencies["Dependencies"]
@@ -39,7 +39,7 @@ graph TB
     subgraph Hardware["Hardware"]
         Webcam["USB Webcam"]
         ESP32Sender["ESP32 Sender<br/>(USB Serial)"]
-        ESP32Camera["ESP32-S3 Camera<br/>(WiFi)"]
+        ESP32Camera["ESP32-CAM<br/>(WiFi MJPEG)"]
     end
     
     Webcam -->|"Video frames"| HandTracker
@@ -49,8 +49,8 @@ graph TB
     SerialComm -->|"USB Serial"| ESP32Sender
     Config --> HandTracker
     
-    CameraViewer -->|"UDP Discovery<br/>(Port 5001)"| ESP32Camera
-    ESP32Camera -->|"UDP Stream<br/>(Port 5000)<br/>Fragmented JPEG"| CameraViewer
+    CameraViewer -->|"HTTP GET<br/>/mjpeg/1"| ESP32Camera
+    ESP32Camera -->|"MJPEG Stream<br/>(multipart)"| CameraViewer
     
     HandTracker -.-> OpenCV
     HandTracker -.-> MediaPipeLib
@@ -155,8 +155,8 @@ graph LR
         ConfigFile["constant.py<br/>(Configuration)"]
     end
     
-    subgraph CameraApp["Camera Viewer Application"]
-        Viewer["camera_viewer.py<br/>(Main Loop)"]
+    subgraph CameraApp["MJPEG Viewer Application"]
+        Viewer["mjpeg_viewer.py<br/>(Main Loop)"]
         HTTPClient["HTTP Client<br/>(Requests)"]
         MJPEGDecoder["MJPEG Decoder<br/>(Stream)"]
         Display["OpenCV Display<br/>(Window)"]
@@ -171,10 +171,9 @@ graph LR
     ConfigFile --> Main
     ConfigFile --> SerialMgr
     
-    Viewer --> UDPReceiver
-    UDPReceiver --> FrameReconstructor
-    FrameReconstructor --> JPEGDecoder
-    JPEGDecoder --> Display
+    Viewer --> HTTPClient
+    HTTPClient --> MJPEGDecoder
+    MJPEGDecoder --> Display
     
     classDef main fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef process fill:#00C853,stroke:#007E33,stroke-width:2px,color:#fff
@@ -182,7 +181,7 @@ graph LR
     classDef config fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
     
     class Main,Viewer main
-    class Capture,Detection,Analysis,Filtering,UDPReceiver,FrameReconstructor,JPEGDecoder,Display process
+    class Capture,Detection,Analysis,Filtering,HTTPClient,MJPEGDecoder,Display process
     class SerialMgr,CommandSender comm
     class ConfigFile config
 ```
