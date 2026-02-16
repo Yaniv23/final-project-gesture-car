@@ -43,7 +43,7 @@ graph TB
     end
     
     subgraph ESP32Sender["📡 ESP32 Sender (Bridge)"]
-        Sender["ESP32 Sender<br/>━━━━━━━━━━━━━━━━<br/>• USB Serial input<br/>• Command conversion<br/>• ESP-NOW transmission<br/>• Handshake protocol"]
+        Sender["ESP32 Sender<br/>━━━━━━━━━━━━━━━━<br/>• USB Serial input<br/>• Command conversion<br/>• ESP-NOW trVansmission<br/>• Handshake protocol"]
     end
     
     subgraph ESP32Camera["📹 ESP32-CAM"]
