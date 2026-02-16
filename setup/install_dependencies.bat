@@ -56,25 +56,25 @@ if "%MAJOR_VER%"=="3" (
     )
 )
 
-REM Navigate to the mediapipe_hand_direction directory
+REM Navigate to the Hand_Tracking directory
 REM Script is in setup/ folder, so go up one level to project root
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR%.."
-set "MEDIAPIPE_DIR=%PROJECT_ROOT%\mediapipe_hand_direction"
+set "HAND_TRACKING_DIR=%PROJECT_ROOT%\pc_side\Hand_Tracking"
 
-if not exist "%MEDIAPIPE_DIR%" (
-    echo [ERROR] Directory 'mediapipe_hand_direction' not found!
+if not exist "%HAND_TRACKING_DIR%" (
+    echo [ERROR] Directory 'pc_side\Hand_Tracking' not found!
     echo Make sure you're running this script from the project root.
     pause
     exit /b 1
 )
 
-cd /d "%MEDIAPIPE_DIR%"
-echo [OK] Changed to directory: %MEDIAPIPE_DIR%
+cd /d "%PROJECT_ROOT%"
+echo [OK] Changed to directory: %PROJECT_ROOT%
 echo.
 
 REM Check if virtual environment exists
-set "VENV_PATH=%MEDIAPIPE_DIR%\venv"
+set "VENV_PATH=%HAND_TRACKING_DIR%\venv"
 if exist "%VENV_PATH%" (
     echo Virtual environment already exists.
     set /p RECREATE="Do you want to recreate it? (y/N): "
@@ -123,8 +123,9 @@ echo.
 
 REM Install dependencies
 echo Installing Python dependencies...
-if exist "requirements.txt" (
-    pip install -r requirements.txt
+set "REQUIREMENTS_FILE=%PROJECT_ROOT%\requirements.txt"
+if exist "%REQUIREMENTS_FILE%" (
+    pip install -r "%REQUIREMENTS_FILE%"
     if errorlevel 1 (
         echo [ERROR] Failed to install dependencies!
         pause
@@ -132,7 +133,8 @@ if exist "requirements.txt" (
     )
     echo [OK] All Python dependencies installed successfully
 ) else (
-    echo [ERROR] requirements.txt not found!
+    echo [ERROR] requirements.txt not found in project root!
+    echo Expected location: %REQUIREMENTS_FILE%
     pause
     exit /b 1
 )
@@ -147,11 +149,11 @@ echo Python dependencies have been installed successfully.
 echo.
 echo To use the project:
 echo   1. Activate the virtual environment:
-echo      cd mediapipe_hand_direction
+echo      cd pc_side\Hand_Tracking
 echo      venv\Scripts\activate.bat
 echo.
 echo   2. Run the hand tracker:
-echo      python hand_direction_tracker.py
+echo      python Hand_Tracker.py
 echo.
 echo   3. For Arduino/ESP32 code:
 echo      - Install Arduino IDE from: https://www.arduino.cc/en/software
@@ -161,7 +163,7 @@ echo        File ^> Preferences ^> Additional Board Manager URLs
 echo        Add: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 echo        Then: Tools ^> Board ^> Boards Manager ^> Search 'ESP32' ^> Install
 echo.
-echo   4. Update the COM port in hand_direction_tracker.py:
+echo   4. Update the COM port in Hand_Tracker.py:
 echo      Change 'COM11' to your actual COM port
 echo.
 pause

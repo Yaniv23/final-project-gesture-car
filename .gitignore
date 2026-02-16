@@ -59,6 +59,11 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+#build artifacts
+build/
+bin/
+obj/
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -104,6 +109,8 @@ ENV/
 env.bak/
 venv.bak/
 mediapipe_hand_direction/venv/
+Pipfile.lock
+Pipfile
 
 # Spyder project settings
 .spyderproject
@@ -243,3 +250,10 @@ secrets.json
 # *.png
 # *.gif
 
+# BMAD and Cursor configuration files
+.bmad-core/
+.cursor/
+_bmad/
+
+# PlatformIO build folders
+.pio/

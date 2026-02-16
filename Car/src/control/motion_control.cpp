@@ -1,0 +1,219 @@
+/**
+ * @file motion_control.cpp
+ * @brief Motion control implementation
+ * @details Based on legacy Vehicle_Controller.ino motion functions
+ */
+
+#include "motion_control.h"
+#include "../config.h"
+#include <Arduino.h>
+
+// Static MotorDriver pointer
+static MotorDriver* motor_driver_ = nullptr;
+static bool error_logged_ = false;  // Prevent error spam
+
+// Helper function to check initialization
+static bool checkInitialized() {
+    if (motor_driver_ == nullptr) {
+        if (!error_logged_) {
+            Serial.println("[ERROR] MotionControl: Not initialized");
+            error_logged_ = true;
+        }
+        return false;
+    }
+    if (!motor_driver_->isInitialized()) {
+        if (!error_logged_) {
+            Serial.println("[ERROR] MotionControl: MotorDriver not initialized");
+            error_logged_ = true;
+        }
+        return false;
+    }
+    error_logged_ = false;  // Reset flag on success
+    return true;
+}
+
+// Convert speed from 0-255 range to 0-1023 range for MotorDriver
+// MotorDriver uses -1023 to +1023, so we scale MOTOR_SPEED_SLOW (150) accordingly
+static int16_t getMotorSpeed() {
+    // Convert MOTOR_SPEED_SLOW (0-255) to MotorDriver range (0-1023)
+    // Formula: (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT
+    return (MOTOR_SPEED_SLOW * MOTOR_PWM_MAX) / MOTOR_SPEED_MAX_8BIT;
+}
+
+// Get reduced motor speed for non-forward/backward movements
+// reduction_percent: percentage to reduce speed (e.g., 40 = 40% reduction = 60% of original speed)
+static int16_t getMotorSpeedReduced(uint8_t reduction_percent = 40) {
+    // Calculate resulting speed: (100 - reduction_percent)% of original speed
+    // Example: 40% reduction = 60% of original speed
+    uint8_t speed_percent = 100 - reduction_percent;
+    return (getMotorSpeed() * speed_percent) / 100;  // Integer math
+}
+
+void motion_init(MotorDriver* motor_driver) {
+    if (motor_driver == nullptr) {
+        Serial.println("[ERROR] MotionControl: motor_driver is null");
+        return;
+    }
+    motor_driver_ = motor_driver;
+}
+
+void motion_stop() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    motor_driver_->stopAll();
+}
+
+void motion_forward() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // INVERTED: Forward now moves backward (negative speed)
+    int16_t speed = -getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+}
+
+void motion_backward() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // INVERTED: Backward now moves forward (positive speed)
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+}
+
+void motion_sideway_left() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    int16_t speed = getMotorSpeedReduced(); 
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+}
+
+
+void motion_sideway_right() {
+    if (!checkInitialized()) {
+        return;
+    }
+    int16_t speed = getMotorSpeedReduced();  // 40% slower for non-forward/backward movements
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
+}
+void motion_rotate_cw() {
+    if (!checkInitialized()) {
+        return;
+    }
+    // INVERTED: FR: Backward, FL: Forward, BR: Backward, BL: Forward
+    int16_t speed = getMotorSpeedReduced((uint8_t)50);  
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+}
+
+void motion_rotate_ccw() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    int16_t speed = getMotorSpeedReduced((uint8_t)50);  
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, -speed);
+}
+
+void motion_diagonal_315() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // Diagonal 315°: FL + BR forward 
+    // INVERTED: Forward uses negative speed (like motion_forward)
+ 
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+}
+
+void motion_diagonal_45() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // Diagonal 45°: FL + BR backward
+    // INVERTED: Backward uses positive speed (like motion_backward)
+  
+    int16_t speed = -getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
+}
+
+void motion_diagonal_225() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // Diagonal 225° (backward-left): FR + BL backward - CORRECT
+    // INVERTED: Backward uses positive speed (like motion_backward)
+    int16_t speed = getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
+}
+
+void motion_diagonal_135() {
+    if (!checkInitialized()) {
+        return;
+    }
+
+    // Diagonal 135°: FR + BL forward (was 315°)
+    // INVERTED: Forward uses negative speed (like motion_forward)
+    int16_t speed = -getMotorSpeed();
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+}
+
+void motion_pivot_left() {
+    if (!checkInitialized()) {
+        return;
+    }
+    int16_t speed = getMotorSpeedReduced((uint8_t)70);  
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0); 
+}
+
+void motion_pivot_right() {
+    if (!checkInitialized()) {
+        return;
+    }
+    int16_t speed = getMotorSpeedReduced((uint8_t)70);  
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_RIGHT, speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_FRONT_LEFT, -speed);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_RIGHT, 0);
+    motor_driver_->setMotorSpeed(MotorDriver::MOTOR_BACK_LEFT, 0);
+}

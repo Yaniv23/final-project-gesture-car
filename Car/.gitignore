@@ -1,0 +1,48 @@
+# PlatformIO
+.pio/
+.vscode/
+.clang_complete
+.gcc-flags.json
+compile_commands.json
+
+# Build artifacts
+.pioenvs/
+.piolibdeps/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+*.tmp
+
+# Python (if using Python scripts)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Backup files
+*.bak
+*.backup
+*~
+

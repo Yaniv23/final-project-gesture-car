@@ -4,35 +4,76 @@ Follow these steps to set up the project. Just copy and paste the commands.
 
 ## Step 1: Install Dependencies
 
-### Option A: Double-Click (Easiest)
+> These instructions assume you downloaded or cloned the project to a folder. Replace the path with wherever you stored the repo.
 
-1. Go to the `setup` folder
-2. Double-click `install_dependencies.bat`
-3. Wait for it to finish
+### Linux/macOS (zsh/bash)
 
-### Option B: PowerShell
+1. Open a terminal (zsh or bash)
+2. Navigate to the project directory and run:
+
+```bash
+cd /path/to/final-project-gesture-car
+./setup/install_dependencies_pipenv.sh
+```
+
+Or if you're already in the project root:
+
+```bash
+./setup/install_dependencies_pipenv.sh
+```
+
+**If you get a "permission denied" error, make the script executable first:**
+```bash
+chmod +x setup/install_dependencies_pipenv.sh
+./setup/install_dependencies_pipenv.sh
+```
+
+### Windows
+
+#### Option A: File Explorer (Easiest)
+
+1. Open File Explorer and browse to your project folder  
+   Example: `C:\Users\you\Documents\gesture-car`
+2. Open the `setup` subfolder
+3. Double-click `install_dependencies.bat`
+4. Wait for the terminal window to finish (it can take a few minutes)
+
+#### Option B: PowerShell (copy/paste friendly)
 
 1. Open PowerShell
-2. Copy and paste this:
+2. Run the command below, replacing the path with the folder where the repo lives:
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car"
+cd "C:\path\to\final-project-gesture-car"
 .\setup\install_dependencies.ps1
 ```
 
-**If you get an error about execution policy, copy and paste this first:**
+**If you get an execution-policy error, run this once and try again:**
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-Then try again.
-
 ## Step 2: Run the Hand Tracker
 
-1. Copy and paste these commands one by one:
+### Linux/macOS
+
+1. Copy and paste the commands below, updating the path to match your machine:
+
+```bash
+cd /path/to/final-project-gesture-car/pc_side/Hand_Tracking
+source venv/bin/activate
+python Hand_Tracker.py
+```
+
+2. A camera window will open. Show your hand to the camera.
+3. Press `q` to quit.
+
+### Windows
+
+1. Copy and paste the commands below, updating the path to match your machine:
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\pc_side\Hand_Tracking"
 ```
 
 ```powershell
@@ -40,7 +81,7 @@ cd "D:\Final Project\FinalRepo\final-project-gesture-car\mediapipe_hand_directio
 ```
 
 ```powershell
-python hand_direction_tracker.py
+python Hand_Tracker.py
 ```
 
 2. A camera window will open. Show your hand to the camera.
@@ -51,11 +92,26 @@ python hand_direction_tracker.py
 If you want to control the car:
 
 1. Connect your ESP32 to the computer via USB
-2. Open `hand_direction_tracker.py` in a text editor
-3. Find line 15 that says: `SERIAL_PORT = 'COM11'`
-4. Change `'COM11'` to your ESP32's COM port (see below how to find it)
+2. Open `pc_side/Hand_Tracking/Hand_Tracker.py` or `pc_side/Hand_Tracking/constant.py` in a text editor
+3. Update the serial port (see below how to find it)
 
-### How to Find Your COM Port
+### How to Find Your Serial Port
+
+**Linux/macOS:**
+
+Run this command in the terminal:
+
+```bash
+ls /dev/tty* | grep -E '(USB|ACM)'
+```
+
+Common ports are:
+- Linux: `/dev/ttyUSB0`, `/dev/ttyACM0`
+- macOS: `/dev/tty.usbserial-*`, `/dev/tty.usbmodem*`
+
+Update the port in `pc_side/Hand_Tracking/Hand_Tracker.py` or `pc_side/Hand_Tracking/constant.py` (e.g., change `'COM11'` to `'/dev/ttyUSB0'`).
+
+**Windows:**
 
 Copy and paste this in PowerShell:
 
@@ -86,12 +142,20 @@ Look for a port like COM3, COM4, COM5, etc. Use that number in the script.
 
 ## Quick Reference
 
-**To start the hand tracker, always run these 3 commands:**
+**Linux/macOS - To start the hand tracker, always run these 3 commands (with your path):**
+
+```bash
+cd /path/to/final-project-gesture-car/pc_side/Hand_Tracking
+source venv/bin/activate
+python Hand_Tracker.py
+```
+
+**Windows - To start the hand tracker, always run these 3 commands (with your path):**
 
 ```powershell
-cd "D:\Final Project\FinalRepo\final-project-gesture-car\mediapipe_hand_direction"
+cd "C:\path\to\final-project-gesture-car\pc_side\Hand_Tracking"
 .\venv\Scripts\Activate.ps1
-python hand_direction_tracker.py
+python Hand_Tracker.py
 ```
 
 That's it! You're ready to go.
