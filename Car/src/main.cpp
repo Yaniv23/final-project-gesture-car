@@ -141,7 +141,7 @@ void setup() {
 
     ModeManager& mode_mgr = ModeManager::getInstance();
     mode_mgr.registerTaskHandles(taskHandle_autonomous, taskHandle_sensors);
-    mode_mgr.setMode(MODE_AUTONOMOUS);
+    mode_mgr.setMode(MODE_MANUAL);
 
     xTaskCreate(
         task_communication,

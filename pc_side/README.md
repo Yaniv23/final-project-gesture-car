@@ -43,7 +43,7 @@ graph TB
     end
     
     subgraph ESP32Sender["📡 ESP32 Sender (Bridge)"]
-        Sender["ESP32 Sender<br/>━━━━━━━━━━━━━━━━<br/>• USB Serial input<br/>• Command conversion<br/>• ESP-NOW transmission<br/>• Handshake protocol"]
+        Sender["ESP32 Sender<br/>━━━━━━━━━━━━━━━━<br/>• USB Serial input<br/>• Command conversion<br/>• ESP-NOW trVansmission<br/>• Handshake protocol"]
     end
     
     subgraph ESP32Camera["📹 ESP32-CAM"]
@@ -196,7 +196,7 @@ flowchart LR
 ## 🔗 Related Documentation
 
 - **[Main Project README](../README.md)** - Complete system overview
-- **[Vehicle Controller](../Vehicule/README.md)** - ESP32 vehicle control system
+- **[Vehicle Controller](../Car/README.md)** - ESP32 vehicle control system
 - **[Architecture Documentation](../docs/architecture.md)** - System architecture details
 - **[PC Side Components Technical Details](../docs/PC_SIDE_COMPONENTS.md)** - Technical reference
 

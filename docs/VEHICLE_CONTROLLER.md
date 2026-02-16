@@ -266,7 +266,7 @@ Mecanum wheels enable **omnidirectional movement**:
 ### Directory Organization
 
 ```
-Vehicule/src/
+Car/src/
 ├── main.cpp                    # Entry point, FreeRTOS init
 ├── config.h                    # Pin definitions, constants
 │
@@ -488,5 +488,5 @@ UBaseType_t stack = uxTaskGetStackHighWaterMark(NULL);
 
 ---
 
-**For user-facing documentation, see [Vehicle README](../Vehicule/README.md)**
+**For user-facing documentation, see [Vehicle README](../Car/README.md)**
 

@@ -28,7 +28,7 @@ To run only one component: `./launch.sh --cam-only` or `./launch.sh --hand-only`
 
 For detailed information on each component:
 
-- **[Vehicle Controller](Vehicule/README.md)** - ESP32 vehicle control system
+- **[Vehicle Controller](Car/README.md)** - ESP32 vehicle control system
   - [Technical Details](docs/VEHICLE_CONTROLLER.md) - Architecture, FreeRTOS, protocols
 - **[Hand Tracking](pc_side/Hand_Tracking/README.md)** - PC-side gesture recognition
 - **[Camera Stream](pc_side/ESP-CAM/)** - MJPEG viewer; camera firmware based on [esp32-mjpeg-multiclient-espcam-drivers](https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drivers)
@@ -259,7 +259,7 @@ PlatformIO is used to build and upload code to:
 ### 2. Build and Upload Vehicle Controller
 
 ```bash
-cd Vehicule
+cd Car
 pio run -t upload
 ```
 
@@ -372,7 +372,7 @@ final-project-gesture-car/
 │   └── Sender_Code/            # ESP32 sender
 │       └── README.md           # Sender documentation
 │
-├── Vehicule/                   # ESP32 vehicle controller
+├── Car/                        # ESP32 vehicle controller
 │   ├── src/
 │   │   ├── main.cpp            # Entry point, FreeRTOS init
 │   │   ├── config.h            # Pin definitions, constants
@@ -396,7 +396,7 @@ final-project-gesture-car/
 ### Building Vehicle Controller
 
 ```bash
-cd Vehicule
+cd Car
 pio run              # Build only
 pio run -t upload    # Build and upload
 pio device monitor   # Monitor serial output

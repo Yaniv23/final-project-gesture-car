@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script to upload and monitor ESP32 code for Vehicule or Sender
-# Usage: ./upload.sh [vehicule|sender]
+# Script to upload and monitor ESP32 code for Car or Sender
+# Usage: ./upload.sh [car|sender]
 
 set -e  # Exit on error
 
@@ -40,10 +40,10 @@ BOARD_TYPE="${1:-}"
 if [ -z "$BOARD_TYPE" ]; then
     print_error "No board type specified"
     echo ""
-    echo "Usage: $0 [vehicule|sender]"
+    echo "Usage: $0 [car|sender]"
     echo ""
-    echo "  vehicule  - Upload and monitor ESP32 Vehicule code"
-    echo "  sender    - Upload and monitor ESP32 Sender code"
+    echo "  car     - Upload and monitor ESP32 Car code"
+    echo "  sender  - Upload and monitor ESP32 Sender code"
     exit 1
 fi
 
@@ -52,9 +52,9 @@ BOARD_TYPE=$(echo "$BOARD_TYPE" | tr '[:upper:]' '[:lower:]')
 
 # Set project directory based on board type
 case "$BOARD_TYPE" in
-    vehicule|vehicle|veh)
-        PROJECT_DIR="$SCRIPT_DIR/Vehicule"
-        BOARD_NAME="Vehicule"
+    car)
+        PROJECT_DIR="$SCRIPT_DIR/Car"
+        BOARD_NAME="Car"
         ;;
     sender|send)
         PROJECT_DIR="$SCRIPT_DIR/pc_side/Sender_Code"
@@ -63,7 +63,7 @@ case "$BOARD_TYPE" in
     *)
         print_error "Invalid board type: $BOARD_TYPE"
         echo ""
-        echo "Valid options: vehicule, sender"
+        echo "Valid options: car, sender"
         exit 1
         ;;
 esac

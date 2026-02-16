@@ -1,38 +1,38 @@
-# 4. Flux de Communication
+# 4. Communication Flow
 
-## 4.1 Protocole de Communication Global
+## 4.1 Global Communication Protocol
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 Utilisateur
+    participant User as 👤 User
     participant PC as 🖥️ PC (Hand Tracker)
     participant Sender as 📡 ESP32 Sender
     participant Vehicle as 🚗 Vehicle Controller
     participant Motors as ⚙️ Motors
     
-    User->>PC: Fait un geste (main)
-    PC->>PC: MediaPipe détection
-    PC->>PC: Analyse gesture
-    PC->>Sender: USB Serial (Commande hex)
-    Sender->>Sender: Conversion protocole
-    Sender->>Vehicle: ESP-NOW (Commande binaire)
-    Vehicle->>Vehicle: Validation commande
-    Vehicle->>Vehicle: Envoie dans queue
-    Vehicle->>Motors: Exécution mouvement
-    Motors-->>User: Véhicule bouge
+    User->>PC: Makes gesture (hand)
+    PC->>PC: MediaPipe detection
+    PC->>PC: Gesture analysis
+    PC->>Sender: USB Serial (Hex command)
+    Sender->>Sender: Protocol conversion
+    Sender->>Vehicle: ESP-NOW (Binary command)
+    Vehicle->>Vehicle: Command validation
+    Vehicle->>Vehicle: Enqueue to queue
+    Vehicle->>Motors: Motion execution
+    Motors-->>User: Vehicle moves
 ```
 
-## 4.2 Protocole de Commande Binaire
+## 4.2 Binary Command Protocol
 
-Le système utilise un **protocole binaire simple** avec des commandes d'un seul byte :
+The system uses a **simple binary protocol** with single-byte commands:
 
 ```
 ┌─────────────────────────────────────────┐
-│  Format de Commande (1 byte)            │
+│  Command Format (1 byte)                │
 ├─────────────────────────────────────────┤
-│  Byte 0: Code Commande (0x00 - 0xFF)   │
+│  Byte 0: Command Code (0x00 - 0xFF)   │
 │                                          │
-│  Commandes Mouvement:                   │
+│  Motion Commands:                        │
 │  0x00: STOP                             │
 │  0x01: FORWARD                           │
 │  0x02: BACKWARD                          │
@@ -43,23 +43,23 @@ Le système utilise un **protocole binaire simple** avec des commandes d'un seul
 │  0x07-0x0A: DIAGONAL_*                   │
 │  0x0B-0x0C: PIVOT_*                      │
 │                                          │
-│  Commandes Mode:                         │
+│  Mode Commands:                          │
 │  0x20: MODE_MANUAL                       │
 │  0x21: MODE_AUTONOMOUS                   │
 │  0x22: MODE_TOGGLE                       │
 │                                          │
-│  Commandes Système:                      │
+│  System Commands:                        │
 │  0xF0: HANDSHAKE_INIT                    │
 │  0xF1: HANDSHAKE_ACK                     │
 │  0xF2: HEARTBEAT                         │
 └─────────────────────────────────────────┘
 ```
 
-## 4.3 Protocole UDP Camera (ESP32-S3 → PC)
+## 4.3 UDP Camera Protocol (ESP32-S3 → PC)
 
-Le système de caméra utilise **UDP** pour le streaming vidéo avec fragmentation de frames JPEG :
+The camera system uses **UDP** for video streaming with fragmented JPEG frames:
 
-### Format de Paquet UDP
+### UDP Packet Format
 
 ```
 ┌─────────────────────────────────────────┐
@@ -74,16 +74,16 @@ Le système de caméra utilise **UDP** pour le streaming vidéo avec fragmentati
 └─────────────────────────────────────────┘
 ```
 
-### Caractéristiques
+### Characteristics
 
-- **Port UDP** : 5000 (stream), 5001 (discovery)
-- **Taille max paquet** : 1400 bytes (UDP safe size)
-- **Taille data par paquet** : 1392 bytes (1400 - 8 header)
-- **Fragmentation** : Frames JPEG fragmentées si > 1392 bytes
-- **Reconstruction** : PC reconstruit frames depuis fragments
-- **Discovery** : Broadcast UDP sur port 5001 pour auto-découverte
+- **UDP Port**: 5000 (stream), 5001 (discovery)
+- **Max packet size**: 1400 bytes (UDP safe size)
+- **Data per packet**: 1392 bytes (1400 - 8 header)
+- **Fragmentation**: JPEG frames fragmented if > 1392 bytes
+- **Reconstruction**: PC reconstructs frames from fragments
+- **Discovery**: UDP broadcast on port 5001 for auto-discovery
 
-### Flux UDP Camera
+### UDP Camera Flow
 
 ```mermaid
 sequenceDiagram
@@ -110,7 +110,7 @@ sequenceDiagram
     end
 ```
 
-## 4.4 Schéma de Communication Détaillé
+## 4.4 Detailed Communication Diagram
 
 ```mermaid
 graph TB

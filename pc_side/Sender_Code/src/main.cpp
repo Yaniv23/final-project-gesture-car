@@ -6,7 +6,7 @@
 // ESP-NOW WiFi channel - MUST match on both sender and vehicle
 #define ESPNOW_WIFI_CHANNEL 1
 
-// Control bytes (must match Vehicule/command_protocol.h)
+// Control bytes (must match Car/command_protocol.h)
 static const uint8_t CMD_HANDSHAKE_INIT  = 0xF0;
 static const uint8_t CMD_HANDSHAKE_ACK   = 0xF1;
 static const uint8_t CMD_HEARTBEAT       = 0xF2;  // reserved for future use
@@ -14,7 +14,7 @@ static const uint8_t CMD_MODE_STATUS     = 0xF4;  // Vehicle → sender: current
 
 static const uint8_t PROTOCOL_VERSION    = 0x01;
 
-// Mode constants (must match Vehicule/mode_manager.h)
+// Mode constants (must match Car/mode_manager.h)
 static const uint8_t MODE_MANUAL         = 0;
 static const uint8_t MODE_AUTONOMOUS     = 1;
 

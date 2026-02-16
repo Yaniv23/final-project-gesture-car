@@ -1,15 +1,15 @@
-# 1. Vue Globale du Système
+# 1. System Overview
 
-## 1.1 Vue d'Ensemble
+## 1.1 Overview
 
-Le système est composé de **4 composants principaux** qui communiquent via différents protocoles :
+The system is composed of **4 main components** that communicate via different protocols:
 
-- **PC (Python)** : Reconnaissance de gestes et visualisation vidéo
-- **ESP32 Sender** : Pont de communication USB Serial → ESP-NOW
-- **ESP32-S3 Camera** : Module de streaming vidéo WiFi
-- **ESP32 Vehicle Controller** : Contrôleur principal du véhicule avec FreeRTOS
+- **PC (Python)**: Gesture recognition and video display
+- **ESP32 Sender**: Communication bridge USB Serial → ESP-NOW
+- **ESP32-S3 Camera**: WiFi video streaming module
+- **ESP32 Vehicle Controller**: Main vehicle controller with FreeRTOS
 
-## 1.2 Schéma Architecture Globale
+## 1.2 Global Architecture Diagram
 
 ```mermaid
 graph TB
@@ -36,14 +36,14 @@ graph TB
     WiFiProtocol["WiFi UDP<br/>JPEG Fragmented"]
     ESPNOWProtocol["ESP-NOW<br/>2.4GHz Wireless"]
     
-    HandTracker -->|"Commandes<br/>gestuelles"| USBProtocol
-    USBProtocol -->|"Commandes<br/>sérialisées"| Sender
-    CameraViewer <-->|"Stream vidéo"| WiFiProtocol
+    HandTracker -->|"Gesture<br/>commands"| USBProtocol
+    USBProtocol -->|"Serialized<br/>commands"| Sender
+    CameraViewer <-->|"Video stream"| WiFiProtocol
     WiFiProtocol <-->|"MJPEG"| Camera
-    Sender -->|"Commandes<br/>binaires"| ESPNOWProtocol
-    ESPNOWProtocol -->|"Commandes<br/>moteur"| Controller
-    Controller -->|"Contrôle PWM"| Motors
-    Controller -->|"Lecture/Contrôle"| Sensors
+    Sender -->|"Binary<br/>commands"| ESPNOWProtocol
+    ESPNOWProtocol -->|"Motor<br/>commands"| Controller
+    Controller -->|"PWM control"| Motors
+    Controller -->|"Read/Control"| Sensors
     
     classDef pcStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef esp32Style fill:#00C853,stroke:#007E33,stroke-width:3px,color:#fff
@@ -60,11 +60,11 @@ graph TB
     class USBProtocol,UDPProtocol,ESPNOWProtocol commStyle
 ```
 
-## 1.3 Principes Architecturaux
+## 1.3 Architectural Principles
 
-- **Séparation des responsabilités** : Chaque composant a un rôle unique
-- **Communication asynchrone** : ESP-NOW pour la latence minimale
-- **Temps réel** : FreeRTOS pour le contrôle moteur (< 20ms)
-- **Modularité** : Architecture basée sur des tâches (tasks)
+- **Separation of concerns**: Each component has a single, well-defined role
+- **Asynchronous communication**: ESP-NOW for minimal latency
+- **Real-time**: FreeRTOS for motor control (< 20ms)
+- **Modularity**: Task-based architecture
 
 ---
